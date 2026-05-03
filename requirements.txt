@@ -12,3 +12,4 @@ sqlalchemy
 pytest
 sentry-sdk[fastapi]
 langsmith
+aiosqlite

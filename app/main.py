@@ -14,10 +14,23 @@ if hasattr(settings, "SENTRY_DSN") and settings.SENTRY_DSN:
         profiles_sample_rate=1.0,
     )
 
+from contextlib import asynccontextmanager
+from app.db.session import engine
+from app.db.models import Base
+from app.api import routes as job_routes
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize Database (Create tables if they don't exist)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
 app = FastAPI(
     title="CommerceLens AI",
     description="AI-powered Review & AEO Analytics",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Exception Handlers
@@ -39,6 +52,9 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(review.router, prefix="/api/v1")
 app.include_router(aeo.router, prefix="/api/v1")
 
+# Register the new background job routes
+# The router prefix is already set to /api/v1 in routes.py, so we don't need to add it here
+app.include_router(job_routes.router)
 
 @app.get("/")
 def root():
