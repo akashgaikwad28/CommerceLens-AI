@@ -4,7 +4,8 @@ from sqlalchemy.future import select
 from app.db.session import get_db
 from app.db.repository import JobRepository
 from app.db.models import AnalysisJob
-from app.api.schemas import AnalyzeRequest, AnalyzeResponse, JobStatusResponse
+from typing import List
+from app.api.schemas import AnalyzeRequest, AnalyzeResponse, JobStatusResponse, JobSummaryResponse, JobMeta
 from app.workers.job_worker import process_job
 
 router = APIRouter(prefix="/api/v1", tags=["analysis"])
@@ -43,6 +44,19 @@ async def analyze_product(
     
     return AnalyzeResponse(job_id=job_id, status="pending")
 
+@router.get("/jobs", response_model=List[JobSummaryResponse])
+async def get_jobs(db: AsyncSession = Depends(get_db)):
+    repo = JobRepository(db)
+    jobs = await repo.get_all_jobs()
+    return [
+        JobSummaryResponse(
+            job_id=job.id,
+            product_name=job.product_name,
+            status=job.status,
+            created_at=job.created_at
+        ) for job in jobs
+    ]
+
 @router.get("/result/{job_id}", response_model=JobStatusResponse)
 async def get_job_result(job_id: str, db: AsyncSession = Depends(get_db)):
     repo = JobRepository(db)
@@ -51,11 +65,17 @@ async def get_job_result(job_id: str, db: AsyncSession = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
+    processing_time = None
+    if job.result and isinstance(job.result, dict):
+        processing_time = job.result.get("processing_time_ms")
+        
     return JobStatusResponse(
         job_id=job.id,
         status=job.status,
-        product_url=job.product_url,
-        product_name=job.product_name,
-        result=job.result,
-        error=job.error
+        data=job.result,
+        error=job.error,
+        meta=JobMeta(
+            created_at=job.created_at,
+            processing_time_ms=processing_time
+        )
     )

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.models import AnalysisJob
@@ -23,6 +23,11 @@ class JobRepository:
         """Retrieve a job by its UUID."""
         result = await self.session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))
         return result.scalars().first()
+
+    async def get_all_jobs(self) -> List[AnalysisJob]:
+        """Retrieve all jobs ordered by creation time descending."""
+        result = await self.session.execute(select(AnalysisJob).order_by(AnalysisJob.created_at.desc()))
+        return list(result.scalars().all())
 
     async def update_status(self, job_id: str, status: str) -> None:
         """Update the status of an existing job."""
