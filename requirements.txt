@@ -8,3 +8,8 @@ playwright
 beautifulsoup4
 sqlalchemy
 pytest
+sentry-sdk[fastapi]
+langsmith
+
+
+

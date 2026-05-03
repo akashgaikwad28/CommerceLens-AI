@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "CommerceLens-AI"
@@ -9,8 +9,13 @@ class Settings(BaseSettings):
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
     
-    # AI/ML Settings (Placeholders)
-    OPENAI_API_KEY: str = ""
+    # AI/ML Settings
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    
+    # Sentry
+    SENTRY_DSN: Optional[str] = None
     
     class Config:
         case_sensitive = True
