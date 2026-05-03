@@ -17,8 +17,18 @@ class Settings(BaseSettings):
     # Sentry
     SENTRY_DSN: Optional[str] = None
     
+    # Database
+    DATABASE_URL: Optional[str] = None
+    
+    # LangSmith
+    LANGSMITH_TRACING: Optional[str] = None
+    LANGSMITH_ENDPOINT: Optional[str] = None
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: Optional[str] = None
+    
     class Config:
         case_sensitive = True
         env_file = ".env"
+        extra = "ignore"  # Allow extra env vars without crashing
 
 settings = Settings()
