@@ -1,5 +1,5 @@
 from pydantic import BaseModel, HttpUrl, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class AnalyzeRequest(BaseModel):
@@ -27,3 +27,19 @@ class JobStatusResponse(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     meta: JobMeta
+
+# --- Comparison Schemas ---
+
+class CompareRequest(BaseModel):
+    product_urls: List[HttpUrl] = Field(..., description="List of 2 to 5 Amazon product URLs to compare", min_length=2, max_length=5)
+
+class CompareResponse(BaseModel):
+    job_id: str
+    status: str
+
+class CompareResultResponse(BaseModel):
+    status: str
+    progress: int
+    stage: str
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None

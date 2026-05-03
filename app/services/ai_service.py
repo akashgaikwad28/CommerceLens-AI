@@ -140,6 +140,41 @@ class AIService:
             "total_estimated_cost_usd": round(self._total_cost, 6),
         }
 
+    @traceable(name="AI Comparison Orchestrator")
+    async def orchestrate_comparison(self, structured_data: dict) -> Dict:
+        """
+        Runs the multi-product comparison logic using the LLM with deterministic structure.
+        """
+        prompt = f"""You are a senior product strategist.
+
+Compare the following products using strictly structured data. Do NOT use outside knowledge.
+
+{json.dumps(structured_data, indent=2)}
+
+Return ONLY valid JSON in this exact format:
+{{
+  "winner": "Exact Product Name",
+  "reason": "One sentence reason for winning",
+  "product_rankings": ["Product A", "Product B"],
+  "best_for": {{
+    "budget": "Product Name or None",
+    "performance": "Product Name or None",
+    "overall": "Product Name"
+  }},
+  "tradeoffs": [
+    "Product A has better rating but Product B has fewer complaints"
+  ],
+  "decision_recommendation": "Actionable final advice",
+  "confidence_score": 0.85
+}}
+
+RULES:
+- Do NOT hallucinate features. Only use the provided structured insights.
+- Provide actionable advice in decision_recommendation.
+- Ensure all product names match the exact input names.
+"""
+        return await self.orchestrate(prompt)
+
     # ──────────────────────────────────────────────────────
     # Provider Implementations
     # ──────────────────────────────────────────────────────

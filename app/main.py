@@ -66,6 +66,9 @@ app.include_router(aeo.router, prefix="/api/v1")
 # The router prefix is already set to /api/v1 in routes.py, so we don't need to add it here
 app.include_router(job_routes.router)
 
+from app.api import routes_compare
+app.include_router(routes_compare.router)
+
 @app.get("/")
 def root():
     return {"message": "CommerceLens AI is running 🚀"}
