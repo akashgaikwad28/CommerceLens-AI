@@ -25,7 +25,11 @@ class JobRepository:
 
     async def get_job(self, job_id: str) -> Optional[AnalysisJob]:
         """Retrieve a job by its UUID."""
-        result = await self.session.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))
+        result = await self.session.execute(
+            select(AnalysisJob)
+            .where(AnalysisJob.id == job_id)
+            .execution_options(populate_existing=True)
+        )
         return result.scalars().first()
 
     async def get_all_jobs(self) -> List[AnalysisJob]:
@@ -109,6 +113,9 @@ class JobRepository:
             job.status = status
             if error_msg:
                 job.error = error_msg
+            if status.upper() == "FAILED":
+                job.progress = 100
+                job.stage = "Failed"
             await self.session.commit()
             logger.info(f"[DB] Comparison Job {job_id} status updated to '{status}'")
 

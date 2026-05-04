@@ -18,7 +18,7 @@ from app.core.logger import get_logger
 logger = get_logger("retry")
 
 
-def retry(max_retries: int = 2, delay: float = 2.0, backoff_factor: float = 2.0):
+def async_retry(max_retries: int = 2, delay: float = 2.0, backoff_factor: float = 2.0):
     """
     Async retry decorator with exponential backoff.
 

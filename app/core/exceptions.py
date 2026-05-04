@@ -11,6 +11,10 @@ class CommerceLensException(Exception):
 class ScraperException(CommerceLensException):
     pass
 
+class BlockedException(ScraperException):
+    """Raised when Amazon triggers a sign-in wall or robot check."""
+    pass
+
 class AIServiceException(CommerceLensException):
     pass
 

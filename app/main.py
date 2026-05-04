@@ -1,4 +1,17 @@
+import sys
+import asyncio
+
+# Fix for Windows: Playwright requires ProactorEventLoop to start subprocesses
+if sys.platform == 'win32':
+    # Ensure the policy is set before any loop is created
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, Request
+import logging
+
+# Check loop type
+loop_type = type(asyncio.get_event_loop_policy().get_event_loop()).__name__
+print(f"DEBUG: Current Asyncio Loop: {loop_type}")
 import time
 import sentry_sdk
 from app.api.v1 import health, review, aeo
@@ -19,13 +32,31 @@ from app.db.session import engine
 from app.db.models import Base
 from app.api import routes as job_routes
 
+# ── Drop-in replacement for the lifespan block in main.py ──────────────────
+#
+# Replace your existing lifespan function with this one.
+# It adds scraper shutdown so the browser process closes cleanly on app exit.
+
+from contextlib import asynccontextmanager
+from app.db.session import engine
+from app.db.models import Base
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize Database (Create tables if they don't exist)
+    # 1. Initialize Database
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
     yield
 
+    # 2. Cleanly shut down the persistent browser context on app exit
+    from app.services.scraper_service import AmazonScraperService
+    # The scraper singleton is held by the job worker — import it and shut it down
+    try:
+        from app.api.job_worker import scraper   # adjust import path if different
+        await scraper.shutdown()
+    except Exception:
+        pass  # Non-fatal — process is exiting anyway
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(

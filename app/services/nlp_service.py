@@ -198,6 +198,12 @@ class NLPService:
         positive = sum(1 for r in ratings if r >= 4.0)
         negative = sum(1 for r in ratings if r <= 2.0)
         neutral = total - positive - negative
+        
+        distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+        for r in ratings:
+            star = str(int(round(r)))
+            if star in distribution:
+                distribution[star] += 1
 
         result = {
             "average_score": round(sum(ratings) / total, 2),
@@ -205,6 +211,12 @@ class NLPService:
             "negative_ratio": round(negative / total, 2),
             "neutral_ratio": round(neutral / total, 2),
             "total_analyzed": total,
+            "sentiment_summary": {
+                "positive": positive,
+                "neutral": neutral,
+                "negative": negative
+            },
+            "rating_distribution": distribution
         }
 
         logger.info(

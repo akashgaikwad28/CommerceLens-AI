@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
+    SERPAPI_KEY: Optional[str] = None
+
     
     # Sentry
     SENTRY_DSN: Optional[str] = None
@@ -25,6 +27,9 @@ class Settings(BaseSettings):
     LANGSMITH_ENDPOINT: Optional[str] = None
     LANGSMITH_API_KEY: Optional[str] = None
     LANGSMITH_PROJECT: Optional[str] = None
+
+    PROXY_URL: Optional[str] = None
+    USE_FREE_PROXIES: bool = False
     
     class Config:
         case_sensitive = True

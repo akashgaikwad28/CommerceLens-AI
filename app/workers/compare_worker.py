@@ -78,13 +78,18 @@ async def process_comparison_job(job_id: str, product_urls: List[str]):
                         break
                         
                     all_done = True
+                    failed_jobs = []
                     for pid in pending_jobs:
                         pj = await repo.get_job(pid)
                         if pj and pj.status in ["pending", "processing"]:
                             all_done = False
                             break
+                        if pj and pj.status == "failed":
+                            failed_jobs.append(pid)
                             
                     if all_done:
+                        if failed_jobs:
+                            logger.warning(f"[COMPARE WORKER] Analysis jobs failed before comparison: {failed_jobs}")
                         break
                         
                     await asyncio.sleep(POLL_INTERVAL)
@@ -104,9 +109,9 @@ async def process_comparison_job(job_id: str, product_urls: List[str]):
                 if pj and pj.status == "completed" and pj.result:
                     completed_jobs.append(pj)
                 else:
-                    reason = "Timeout/Scraper Failure" if pj else "Job Missing"
+                    reason = "Analysis did not complete" if pj else "Job missing"
                     if pj and pj.error:
-                        reason = pj.error
+                        reason = friendly_failure_reason(pj.error)
                     failed_products.append({"url": pj.product_url if pj else "Unknown", "reason": reason})
             
             valid_products = len(completed_jobs)
@@ -115,8 +120,17 @@ async def process_comparison_job(job_id: str, product_urls: List[str]):
             
             if valid_products < 2:
                 error_msg = f"Comparison requires at least 2 valid products. Only {valid_products} completed."
+                if failed_products:
+                    error_msg = f"{error_msg} {failed_products[0]['reason']}."
                 logger.error(f"[COMPARE WORKER] {error_msg}")
-                # Save partial data and mark FAILED
+                comp_job = await repo.get_comparison_job(job_id)
+                if comp_job:
+                    comp_job.result = {
+                        "products": [],
+                        "failed_products": failed_products,
+                        "observability": metrics
+                    }
+                    await session.commit()
                 await repo.update_comparison_status(job_id, "FAILED", error_msg)
                 return
                 
@@ -174,3 +188,9 @@ async def process_comparison_job(job_id: str, product_urls: List[str]):
             logger.error(f"[COMPARE WORKER] Job {job_id} failed with exception: {str(e)}")
             sentry_sdk.capture_exception(e)
             await repo.update_comparison_status(job_id, "FAILED", str(e))
+
+
+def friendly_failure_reason(reason: str) -> str:
+    if reason == "NO_REVIEWS":
+        return "No review data could be extracted for this product"
+    return reason or "Analysis failed"

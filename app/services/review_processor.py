@@ -89,7 +89,7 @@ RULES:
 - Patterns: behavioral trends (repeat vs first-time buyers, seasonal, etc.).
 """
 
-AGGREGATION_PROMPT_TEMPLATE = """You are a VP of Product creating a final customer intelligence report.
+AGGREGATION_PROMPT_TEMPLATE = """You are a Principal Product Strategy Consultant. Create a data-driven Market Intelligence report.
 
 PRODUCT: {product_name}
 DATA SOURCE: {chunk_count} analysis batches from {total_reviews} customer reviews
@@ -100,36 +100,41 @@ NEGATIVE SIGNALS: {negative_keywords}
 BATCH SUMMARIES:
 {summaries_text}
 
-TASK: Merge all batch summaries into ONE definitive analysis with justifications.
+TASK: Synthesize all data into an interactive intelligence report. Respond ONLY with valid JSON.
 
-Respond ONLY with valid JSON in this exact format:
+FORMAT:
 {{
-    "top_buying_reasons": [
-        "Reason — (mentioned in X/Y batches)",
-        "Reason — (mentioned in X/Y batches)"
+    "tldr": {{
+        "verdict": "Clear, punchy verdict (e.g., 'Category leader with pricing advantage').",
+        "opportunity": "Growth pivot (e.g., 'Target fitness segment via specialized ads').",
+        "risk": "Sales threat (e.g., 'Increasing reports of hinge failure')."
+    }},
+    "actionability": {{
+        "fix_immediately": ["X% of negative reviews mention connectivity drops"],
+        "improve_messaging": ["'Value for money' appears in X% of reviews -> highlight in ads"],
+        "double_down": ["Strong sentiment (X%) around sound quality -> use as primary hook"]
+    }},
+    "market_intelligence_insights": [
+        "Insight (e.g., 'Customers prioritize price-performance over brand loyalty')",
+        "Insight (e.g., 'Negative sentiment spikes after 6 months of usage')"
     ],
-    "top_complaints": [
-        "Complaint — (mentioned in X/Y batches)",
-        "Complaint — (mentioned in X/Y batches)"
-    ],
-    "improvement_suggestions": [
-        "Do X to fix Y — (based on complaint about Z)",
-        "Do X to fix Y — (based on complaint about Z)"
-    ],
-    "key_patterns": [
-        "Pattern — (observed across X batches)",
-        "Pattern — (observed across X batches)"
-    ]
+    "keyword_insights": {{
+        "positives": [
+            {{"word": "keyword", "intensity": 5, "frequency_pct": 42}}
+        ],
+        "negatives": [
+            {{"word": "keyword", "intensity": 4, "frequency_pct": 23}}
+        ]
+    }},
+    "purchase_drivers": ["Driver with % mention or justification"],
+    "pain_points": ["Pain point with % mention or justification"]
 }}
 
 RULES:
-- MERGE similar insights across batches. "packaging damaged" and "seal broken" = one insight.
-- RANK by frequency: insights mentioned in more batches appear first.
-- Each insight MUST include a justification in parentheses: how many batches mentioned it, or its impact level.
-- Each suggestion must be actionable: "Do X to fix Y" format, referencing a specific complaint.
-- Focus on insights that would change a product manager's decisions.
-- Do NOT include generic statements. Every point must reference specific "{product_name}" details.
-- Aim for 5 buying reasons, 5 complaints, 3 suggestions, 3 patterns.
+- Percentages (X%) MUST be realistic estimates based on the frequency in batch summaries.
+- "market_intelligence_insights" should be high-level strategic observations.
+- Each action item in "actionability" MUST be tied to a specific percentage/signal.
+- Intensity is 1-5. Frequency_pct is 0-100.
 """
 
 
@@ -397,10 +402,12 @@ class ReviewProcessor:
             sentry_sdk.capture_exception(e)
 
             return {
-                "top_buying_reasons": ["Analysis partially completed — see individual chunk data"],
-                "top_complaints": ["Analysis partially completed — see individual chunk data"],
-                "improvement_suggestions": [],
-                "key_patterns": [],
+                "tldr": {"verdict": "Analysis failed", "opportunity": "", "risk": ""},
+                "actionability": {"fix_immediately": [], "improve_messaging": [], "double_down": []},
+                "market_intelligence_insights": [],
+                "purchase_drivers": [],
+                "pain_points": [],
+                "keyword_insights": {"positives": [], "negatives": []},
                 "model_used": {"provider": "partial", "model": "none", "fallback_used": True},
             }
 
@@ -511,10 +518,12 @@ class ReviewProcessor:
         try:
             parsed = json.loads(cleaned)
             return {
-                "top_buying_reasons": parsed.get("top_buying_reasons", []),
-                "top_complaints": parsed.get("top_complaints", []),
-                "improvement_suggestions": parsed.get("improvement_suggestions", []),
-                "key_patterns": parsed.get("key_patterns", []),
+                "tldr": parsed.get("tldr", {"verdict": "", "opportunity": "", "risk": ""}),
+                "actionability": parsed.get("actionability", {"fix_immediately": [], "improve_messaging": [], "double_down": []}),
+                "market_intelligence_insights": parsed.get("market_intelligence_insights", []),
+                "purchase_drivers": parsed.get("purchase_drivers", []),
+                "pain_points": parsed.get("pain_points", []),
+                "keyword_insights": parsed.get("keyword_insights", {"positives": [], "negatives": []}),
             }
         except json.JSONDecodeError as e:
             logger.warning(f"[JSON PARSE] Failed to parse LLM response: {str(e)}")
@@ -543,10 +552,12 @@ class ReviewProcessor:
             "positive_ratio": sentiment.get("positive_ratio", 0.0),
             "negative_ratio": sentiment.get("negative_ratio", 0.0),
 
-            "top_buying_reasons": ai_insights.get("top_buying_reasons", []),
-            "top_complaints": ai_insights.get("top_complaints", []),
-            "improvement_suggestions": ai_insights.get("improvement_suggestions", []),
-            "key_patterns": ai_insights.get("key_patterns", []),
+            "tldr": ai_insights.get("tldr", {}),
+            "actionability": ai_insights.get("actionability", {}),
+            "market_intelligence_insights": ai_insights.get("market_intelligence_insights", []),
+            "purchase_drivers": ai_insights.get("purchase_drivers", []),
+            "pain_points": ai_insights.get("pain_points", []),
+            "keyword_insights": ai_insights.get("keyword_insights", {}),
 
             "confidence_score": confidence,
 
@@ -579,10 +590,12 @@ class ReviewProcessor:
             "sentiment_score": sentiment.get("average_score", 0.0),
             "positive_ratio": sentiment.get("positive_ratio", 0.0),
             "negative_ratio": sentiment.get("negative_ratio", 0.0),
-            "top_buying_reasons": ["AI analysis unavailable — sentiment data only"],
-            "top_complaints": ["AI analysis unavailable — sentiment data only"],
-            "improvement_suggestions": [],
-            "key_patterns": [],
+            "tldr": {"verdict": "AI analysis unavailable", "opportunity": "", "risk": ""},
+            "actionability": {"fix_immediately": [], "improve_messaging": [], "double_down": []},
+            "market_intelligence_insights": [],
+            "purchase_drivers": [],
+            "pain_points": [],
+            "keyword_insights": {"positives": [], "negatives": []},
             "confidence_score": 0.2,
             "model_used": {"provider": "sentiment_only", "model": "none", "fallback_used": True},
             "reviews_analyzed": len(reviews),
@@ -599,10 +612,12 @@ class ReviewProcessor:
     def _default_insights(self) -> Dict:
         """Default insight structure when JSON parsing fails."""
         return {
-            "top_buying_reasons": [],
-            "top_complaints": [],
-            "improvement_suggestions": [],
-            "key_patterns": [],
+            "tldr": {"verdict": "", "opportunity": "", "risk": ""},
+            "actionability": {"fix_immediately": [], "improve_messaging": [], "double_down": []},
+            "market_intelligence_insights": [],
+            "purchase_drivers": [],
+            "pain_points": [],
+            "keyword_insights": {"positives": [], "negatives": []},
         }
 
     def _safe_parse_chunk(self, content: str) -> Dict | None:
