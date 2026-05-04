@@ -1,32 +1,19 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { analyzeProduct, getJobResult, JobResultResponse } from '../api/client';
-import { Search, Loader2, AlertCircle, CheckCircle2, ChevronRight, BarChart3, Brain } from 'lucide-react';
-import ProgressBar from '../components/ProgressBar';
-import StatusBadge from '../components/StatusBadge';
-import ChartComponent from '../components/ChartComponent';
-import InsightList from '../components/InsightList';
+import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
+import { analyzeProduct } from '../api/client';
+import { Search, ChevronRight, Zap, Target, BarChart3, Info, ArrowRight } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function AnalysisPage() {
   const [url, setUrl] = useState('');
   const [maxPages, setMaxPages] = useState(3);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const mutation = useMutation({
     mutationFn: ({ url, pages }: { url: string; pages: number }) => analyzeProduct(url, pages),
     onSuccess: (data) => {
-      setActiveJobId(data.job_id);
-    },
-  });
-
-  const { data: jobStatus } = useQuery({
-    queryKey: ['job', activeJobId],
-    queryFn: () => getJobResult(activeJobId!),
-    enabled: !!activeJobId,
-    refetchInterval: (query) => {
-      const data = query.state.data as JobResultResponse | undefined;
-      if (data?.status === 'completed' || data?.status === 'failed') return false;
-      return 3000;
+      navigate(`/job/${data.job_id}`);
     },
   });
 
@@ -36,173 +23,122 @@ export default function AnalysisPage() {
     mutation.mutate({ url, pages: maxPages });
   };
 
-  const isProcessing = jobStatus?.status === 'pending' || jobStatus?.status === 'processing';
-  const isCompleted = jobStatus?.status === 'completed';
-  const isFailed = jobStatus?.status === 'failed';
-
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Single Product Intelligence</h1>
-        <p className="text-slate-500 mb-8 max-w-2xl">
-          Enter an Amazon product URL to extract deep customer sentiment, identifying exactly why people buy and where they are disappointed.
+    <div className="max-w-4xl space-y-12 py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-2">
+        <h1 className="text-4xl font-black text-slate-900 tracking-tight">Intelligence Node</h1>
+        <p className="text-slate-500 font-medium leading-relaxed max-w-2xl">
+          Deploy an analysis task to extract structured market signals. Our AI engine will scrape, synthesize, and benchmark the product against category norms.
         </p>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="url"
-                placeholder="https://www.amazon.com/dp/B08N5KWBKK..."
-                className="w-full pl-12 pr-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={mutation.isPending || isProcessing}
-                required
-              />
-            </div>
-            <div className="w-full md:w-48">
-              <select
-                className="w-full px-4 py-4 rounded-2xl border border-slate-200 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all appearance-none bg-white cursor-pointer"
-                value={maxPages}
-                onChange={(e) => setMaxPages(Number(e.target.value))}
-                disabled={mutation.isPending || isProcessing}
-              >
-                {[1, 2, 3, 4, 5].map(n => (
-                  <option key={n} value={n}>{n} Review Pages</option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="submit"
-              disabled={mutation.isPending || isProcessing || !url}
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2 min-w-[160px]"
-            >
-              {mutation.isPending || isProcessing ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  Run Analysis
-                  <ChevronRight className="w-5 h-5" />
-                </>
-              )}
-            </button>
-          </div>
-        </form>
       </div>
 
-      {activeJobId && (
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100 animate-in slide-in-from-bottom duration-500">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h2 className="text-xl font-bold text-slate-800">Intelligence Task</h2>
-                <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">ID: {activeJobId}</span>
-              </div>
-              <p className="text-sm text-slate-500">{jobStatus?.stage || "Initializing request..."}</p>
+      <div className="bg-white rounded-[3rem] p-12 border border-slate-100 shadow-sm space-y-10 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full blur-3xl -mr-32 -mt-32"></div>
+        
+        <form onSubmit={handleSubmit} className="relative z-10 space-y-8">
+          <div className="space-y-4">
+            <label className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1">Target Product URL</label>
+            <div className="relative group">
+               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2rem] blur opacity-0 group-focus-within:opacity-10 transition-opacity"></div>
+               <div className="relative">
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400" />
+                  <input
+                    type="url"
+                    placeholder="https://www.amazon.com/dp/B08N5KWBKK..."
+                    className="w-full pl-16 pr-6 py-6 rounded-[2rem] border border-slate-200 focus:border-blue-500 outline-none transition-all text-lg font-medium shadow-inner bg-slate-50/50"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    required
+                  />
+               </div>
             </div>
-            <StatusBadge status={jobStatus?.status || 'pending'} />
           </div>
 
-          {!isCompleted && !isFailed && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <ProgressBar progress={jobStatus?.progress || 10} label="Current Stage Progress" />
-              <div className="flex items-center gap-2 text-blue-600 bg-blue-50 p-4 rounded-2xl border border-blue-100 animate-pulse">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="text-sm font-bold">AI is orchestrating scraping and analysis nodes...</span>
-              </div>
-            </div>
-          )}
-
-          {isFailed && (
-            <div className="flex items-start gap-4 bg-rose-50 border border-rose-100 p-6 rounded-2xl text-rose-800">
-              <AlertCircle className="w-6 h-6 shrink-0" />
-              <div>
-                <h4 className="font-bold">Analysis Failed</h4>
-                <p className="text-sm opacity-90">{jobStatus?.error || "An unexpected error occurred during analysis."}</p>
-                <button 
-                  onClick={() => setActiveJobId(null)}
-                  className="mt-4 px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-lg text-xs font-bold transition-colors"
+              <label className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1">Signal Depth</label>
+              <div className="relative">
+                <select
+                  className="w-full px-6 py-5 rounded-2xl border border-slate-200 focus:border-blue-500 outline-none transition-all appearance-none bg-slate-50/50 font-bold text-slate-700 cursor-pointer"
+                  value={maxPages}
+                  onChange={(e) => setMaxPages(Number(e.target.value))}
                 >
-                  Clear and Try Again
-                </button>
+                  <option value={1}>Quick Pulse (1 Page)</option>
+                  <option value={3}>Balanced Scan (3 Pages)</option>
+                  <option value={5}>Deep Intelligence (5 Pages)</option>
+                  <option value={10}>Full Market Synthesis (10 Pages)</option>
+                </select>
+                <ChevronRight className="absolute right-6 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 rotate-90" />
               </div>
             </div>
-          )}
 
-          {isCompleted && jobStatus?.result && (
-            <div className="space-y-12 mt-8 border-t border-slate-100 pt-12 animate-in zoom-in-95 duration-700">
-              {/* Product Header */}
-              <div className="flex items-start gap-6">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg text-white font-black text-2xl">
-                  {jobStatus.result.sentiment_score.toFixed(1)}
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900 leading-tight">Review Analysis Success</h3>
-                  <div className="flex items-center gap-4 mt-2">
-                    <div className="flex items-center gap-1.5 text-slate-500 text-sm font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      {jobStatus.result.reviews_analyzed} Reviews Processed
-                    </div>
-                    <div className="w-px h-4 bg-slate-200"></div>
-                    <div className="flex items-center gap-1.5 text-slate-500 text-sm font-medium">
-                      <Brain className="w-4 h-4 text-purple-500" />
-                      {Math.round(jobStatus.result.confidence_score * 100)}% AI Confidence
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-slate-50/50 rounded-3xl p-8 border border-slate-100">
-                  <h4 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-blue-500" />
-                    Sentiment Dynamics
-                  </h4>
-                  <ChartComponent 
-                    positive={jobStatus.result.positive_ratio}
-                    neutral={1 - jobStatus.result.positive_ratio} 
-                    negative={0} // Backend doesn't split negative/neutral yet
-                  />
-                </div>
-
-                <div className="space-y-6">
-                  <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Brain className="w-5 h-5 text-purple-500" />
-                    Key Buying Patterns
-                  </h4>
-                  <InsightList 
-                    reasons={jobStatus.result.top_buying_reasons}
-                    complaints={jobStatus.result.top_complaints}
-                    improvements={jobStatus.result.improvement_suggestions}
-                  />
-                </div>
-              </div>
-
-              {/* Recommendation Card */}
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white shadow-xl shadow-blue-200 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
-                  <Brain className="w-32 h-32" />
-                </div>
-                <div className="relative z-10">
-                  <span className="text-blue-200 text-xs font-black uppercase tracking-widest px-3 py-1 bg-white/10 rounded-full">
-                    Executive Summary
-                  </span>
-                  <h4 className="text-2xl font-bold mt-4 mb-2">Final Recommendation</h4>
-                  <p className="text-blue-50 text-lg leading-relaxed opacity-90 italic">
-                    "Based on our cross-sentiment analysis, this product shows a robust positive trend in quality, making it a safe choice for users prioritizing long-term reliability."
-                  </p>
-                </div>
-              </div>
+            <div className="flex flex-col justify-end">
+               <button
+                  type="submit"
+                  disabled={mutation.isPending || !url}
+                  className="w-full py-5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white font-black rounded-2xl shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3 active:scale-95"
+               >
+                  {mutation.isPending ? (
+                     <>
+                        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                        Initializing...
+                     </>
+                  ) : (
+                     <>
+                        Deploy Intelligence Task
+                        <ArrowRight className="w-5 h-5" />
+                     </>
+                  )}
+               </button>
             </div>
-          )}
+          </div>
+        </form>
+
+        <div className="flex items-start gap-4 p-6 bg-blue-50 border border-blue-100 rounded-[2rem] relative z-10">
+           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+              <Zap className="w-5 h-5 text-blue-600 fill-current" />
+           </div>
+           <div className="space-y-1">
+              <h4 className="text-sm font-bold text-blue-900">Expert Recommendation</h4>
+              <p className="text-xs font-medium text-blue-700/70 leading-relaxed">
+                 Use "Deep Intelligence" for high-volume products (1000+ reviews) to ensure our AI captures niche pain points and edge-case feature requests.
+              </p>
+           </div>
         </div>
-      )}
+      </div>
+
+      {/* Value Props */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8">
+         <SmallProp 
+            icon={<Target className="w-5 h-5 text-indigo-500" />} 
+            title="Signal Extraction" 
+            desc="Identifying purchase triggers." 
+         />
+         <SmallProp 
+            icon={<BarChart3 className="w-5 h-5 text-emerald-500" />} 
+            title="Revenue Modeling" 
+            desc="Benchmarking GMV projections." 
+         />
+         <SmallProp 
+            icon={<Info className="w-5 h-5 text-amber-500" />} 
+            title="Competitor Mapping" 
+            desc="Positioning vs. market norms." 
+         />
+      </div>
+    </div>
+  );
+}
+
+function SmallProp({ icon, title, desc }: { icon: any, title: string, desc: string }) {
+  return (
+    <div className="flex items-center gap-4 p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm">
+       <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center shrink-0">
+          {icon}
+       </div>
+       <div className="space-y-0.5">
+          <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">{title}</h4>
+          <p className="text-[10px] font-bold text-slate-400">{desc}</p>
+       </div>
     </div>
   );
 }

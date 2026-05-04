@@ -1,17 +1,33 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle, ArrowLeft, Box, CheckCircle2, ExternalLink, Filter,
+  Globe, Search, ShieldCheck, Star
+} from 'lucide-react';
 import { getJobResult, JobResultResponse } from '../api/client';
+import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
-import InsightList from '../components/InsightList';
+import ProcessingUI from '../components/ProcessingUI';
+import TLDRStrip from '../components/TLDRStrip';
+import ActionabilityPanel from '../components/ActionabilityPanel';
+import KeywordHeatmap from '../components/KeywordHeatmap';
+import RevenuePanel from '../components/RevenuePanel';
+import HistorySidebar from '../components/HistorySidebar';
 import ChartComponent from '../components/ChartComponent';
-import ProgressBar from '../components/ProgressBar';
-import { ArrowLeft, Loader2, AlertCircle, Clock, Star, Target, Zap, ExternalLink } from 'lucide-react';
-import clsx from 'clsx';
+
+const cardMotion = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0 },
+};
 
 export default function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>();
+  const { addToHistory } = useStore();
+  const [selectedKeyword, setSelectedKeyword] = useState('');
 
-  const { data: job, isLoading, error } = useQuery({
+  const { data: job, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['job', jobId],
     queryFn: () => getJobResult(jobId!),
     enabled: !!jobId,
@@ -22,176 +38,343 @@ export default function JobDetailPage() {
     },
   });
 
-  if (isLoading) {
+  useEffect(() => {
+    if (job?.status === 'completed' && job.data && jobId) {
+      addToHistory(jobId, job.data.product_name || 'Amazon Product');
+    }
+  }, [job, jobId, addToHistory]);
+
+  if (isLoading) return <Centered><ProcessingUI progress={10} /></Centered>;
+
+  const isTerminal = job?.status === 'completed' || job?.status === 'failed';
+  if (!isTerminal && job) return <Centered><ProcessingUI progress={job.progress || 10} /></Centered>;
+
+  if (job?.status === 'failed' || error || !job) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-        <p className="text-slate-500 font-medium">Retrieving product intelligence...</p>
-      </div>
-    );
-  }
-
-  if (error || !job) {
-    return (
-      <div className="bg-rose-50 border border-rose-100 p-8 rounded-3xl text-rose-800 max-w-2xl mx-auto mt-12">
-        <AlertCircle className="w-8 h-8 mb-4" />
-        <h3 className="text-xl font-bold mb-2">Job Not Found</h3>
-        <p className="opacity-90 mb-6">The analysis task you are looking for does not exist or has been removed.</p>
-        <Link to="/" className="inline-flex items-center text-rose-900 font-bold hover:underline">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
-        </Link>
-      </div>
-    );
-  }
-
-  const isCompleted = job.status === 'completed' && job.result;
-  const isFailed = job.status === 'failed';
-  const isProcessing = job.status === 'pending' || job.status === 'processing';
-
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
-        <Link to="/" className="inline-flex items-center text-slate-500 hover:text-slate-900 transition-colors font-bold text-sm group">
-          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to Dashboard
-        </Link>
-        <div className="flex items-center gap-3">
-          <StatusBadge status={job.status} />
-          <div className="text-xs font-mono text-slate-400 bg-white border border-slate-100 px-3 py-1 rounded-full shadow-sm">
-            ID: {jobId?.substring(0, 8)}...
+      <Centered>
+        <div className="w-full max-w-xl rounded-3xl bg-white p-8 text-center shadow-xl shadow-slate-200/60">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+            <AlertCircle className="h-7 w-7" />
           </div>
-        </div>
-      </div>
-
-      {/* Header Card */}
-      <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full blur-3xl -mr-32 -mt-32"></div>
-        <div className="relative z-10">
-          <h1 className="text-3xl font-black text-slate-900 leading-tight mb-4">
-            Analysis Results
-          </h1>
-          <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center text-slate-500 text-sm font-medium">
-              <Clock className="w-4 h-4 mr-2 text-slate-400" />
-              {new Date(job.meta.created_at).toLocaleString()}
-            </div>
-            {job.result?.reviews_analyzed && (
-              <div className="flex items-center text-slate-500 text-sm font-medium">
-                <Target className="w-4 h-4 mr-2 text-indigo-400" />
-                {job.result.reviews_analyzed} Customer Reviews
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isProcessing && (
-        <div className="bg-white rounded-[2rem] p-12 text-center border border-slate-100 shadow-sm space-y-6">
-          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
-            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-          </div>
-          <div className="max-w-md mx-auto space-y-4">
-            <h2 className="text-2xl font-bold text-slate-900">{job.stage || "Analysis in Progress"}</h2>
-            <ProgressBar progress={job.progress || 10} />
-            <p className="text-slate-500 text-sm font-medium leading-relaxed">
-              Our AI nodes are currently scraping Amazon review blocks and synthesizing sentiment clusters. This usually takes around 30-45 seconds.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {isFailed && (
-        <div className="bg-rose-50 rounded-[2rem] border border-rose-100 p-12 text-center space-y-4">
-          <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-2" />
-          <h2 className="text-2xl font-bold text-rose-900">Analysis Halted</h2>
-          <p className="text-rose-700 font-medium max-w-lg mx-auto leading-relaxed">
-            {job.error || "An unexpected error occurred during processing. The product URL might be blocked or formatted incorrectly."}
+          <h2 className="text-2xl font-black text-slate-950">Analysis could not finish</h2>
+          <p className="mt-3 text-sm font-medium leading-6 text-slate-500">
+            {job?.error || 'The product URL may be unavailable, blocked, or incomplete.'}
           </p>
-          <div className="pt-6">
-            <Link to="/analyze" className="px-8 py-3 bg-rose-600 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 hover:bg-rose-700 transition-all">
-              Try Another Product
+          <div className="mt-6 flex justify-center gap-3">
+            <button onClick={() => refetch()} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 hover:bg-blue-700">
+              {isFetching ? 'Retrying...' : 'Retry'}
+            </button>
+            <Link to="/analyze" className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">
+              New analysis
             </Link>
           </div>
         </div>
-      )}
+      </Centered>
+    );
+  }
 
-      {isCompleted && job.result && (
-        <div className="space-y-8 animate-in zoom-in-95 duration-500">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard 
-              icon={<Star className="w-6 h-6 text-amber-500" />}
-              title="Sentiment Index"
-              value={`${job.result.sentiment_score.toFixed(1)}/5.0`}
-              bg="bg-amber-50"
-            />
-            <StatCard 
-              icon={<Target className="w-6 h-6 text-blue-500" />}
-              title="AI Confidence"
-              value={`${Math.round(job.result.confidence_score * 100)}%`}
-              bg="bg-blue-50"
-            />
-            <StatCard 
-              icon={<Zap className="w-6 h-6 text-indigo-500" />}
-              title="Data Sample"
-              value={`${job.result.reviews_analyzed} Reviews`}
-              bg="bg-indigo-50"
-            />
-            <StatCard 
-              icon={<Clock className="w-6 h-6 text-emerald-500" />}
-              title="Compute Time"
-              value={`${(job.meta.processing_time_ms / 1000).toFixed(1)}s`}
-              bg="bg-emerald-50"
-            />
+  const report = job.data;
+  if (!report) return <Centered><ProcessingUI progress={90} /></Centered>;
+
+  const legacyConfidence = (report as any).confidence || {};
+  const confidence = report.confidence_layers || {
+    sentiment: legacyConfidence.sentiment || 'medium',
+    revenue: legacyConfidence.revenue_estimate || 'medium',
+    pros_cons: legacyConfidence.pros_cons || 'medium',
+    insights: report.used_llm ? 'medium' : 'low',
+  };
+
+  const rawRevenue = report.revenue_estimate as any;
+  const monthlySales = Number(rawRevenue?.monthly_sales || 0);
+  const monthlyRevenue = Number(rawRevenue?.revenue || 0);
+  const revenue = {
+    range: rawRevenue?.range || {
+      min_sales: monthlySales,
+      max_sales: monthlySales,
+      min_revenue: monthlyRevenue,
+      max_revenue: monthlyRevenue,
+    },
+    currency: rawRevenue?.currency || '₹',
+    confidence: rawRevenue?.confidence || 'low',
+    revenue_model: rawRevenue?.revenue_model || 'available signals',
+    tooltip: rawRevenue?.tooltip || 'Estimated from available marketplace and review signals.',
+  };
+
+  const tldr = report.tldr || { verdict: 'Not enough data for a verdict yet.', opportunity: 'Not enough data', risk: 'Not enough data' };
+  const actions = report.actionability || { fix_immediately: [], improve_messaging: [], double_down: [] };
+  const keywordInsights = report.keyword_insights || { positives: [], negatives: [] };
+  const reviews = Array.isArray(report.reviews) ? report.reviews : [];
+  const specs = Array.isArray(report.specs) ? report.specs : [];
+  const productName = report.product_name || 'Amazon Product';
+  const reviewsAnalyzed = Number(report.reviews_analyzed || 0);
+  const limitedData = reviews.length === 0 || reviewsAnalyzed < 5;
+
+  return (
+    <motion.div
+      initial="hidden"
+      animate="show"
+      transition={{ staggerChildren: 0.06 }}
+      className="mx-auto max-w-7xl space-y-6 px-4 pb-16 lg:px-8"
+    >
+      <motion.div variants={cardMotion} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <Link to="/dashboard" className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-950">
+          <ArrowLeft className="h-4 w-4" /> Dashboard
+        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {limitedData && <Badge tone="amber">Limited data available</Badge>}
+          <Badge tone="blue"><Globe className="h-3.5 w-3.5" /> {report.source || 'amazon'}</Badge>
+          <StatusBadge status={job.status} />
+        </div>
+      </motion.div>
+
+      <motion.section variants={cardMotion} whileHover={{ scale: 1.005 }} className="rounded-3xl bg-white p-6 shadow-xl shadow-slate-200/60 md:p-8">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center">
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-2xl bg-slate-50">
+            {report.product_image ? <img src={report.product_image} alt={productName} className="h-full w-full object-contain p-3" /> : <Box className="h-10 w-10 text-slate-300" />}
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-              <InsightList 
-                reasons={job.result.top_buying_reasons}
-                complaints={job.result.top_complaints}
-                improvements={job.result.improvement_suggestions}
-              />
+          <div className="min-w-0 flex-1">
+            <div className="mb-3 flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest text-slate-400">
+              <span>Product intelligence</span>
+              <span className="flex items-center gap-1 text-amber-500"><Star className="h-3.5 w-3.5 fill-current" /> Review-backed</span>
             </div>
-            <div className="space-y-8">
-              <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
-                <h4 className="text-lg font-bold text-slate-800 mb-6">Sentiment Composition</h4>
-                <ChartComponent 
-                  positive={job.result.positive_ratio}
-                  neutral={1 - job.result.positive_ratio}
-                  negative={0}
-                />
-              </div>
-              <div className="bg-slate-900 rounded-3xl p-8 text-white shadow-xl">
-                <h4 className="text-lg font-bold mb-4">Product URL</h4>
-                <div className="p-4 bg-white/5 rounded-2xl border border-white/10 break-all text-xs font-mono text-slate-400 mb-6">
-                  {job.result.product_url}
-                </div>
-                <a 
-                  href={job.result.product_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full py-3 bg-white text-slate-900 rounded-xl font-bold hover:bg-slate-50 transition-colors"
-                >
-                  View on Amazon
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              </div>
+            <h1 className="text-2xl font-black leading-tight tracking-tight text-slate-950 md:text-4xl">{productName}</h1>
+            <div className="mt-5 flex flex-wrap items-center gap-4 text-sm font-semibold text-slate-500">
+              <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-600" />{reviewsAnalyzed ? `${formatCompact(reviewsAnalyzed)} signals analyzed` : 'Not enough review data'}</span>
+              {report.product_url && <a href={report.product_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-white hover:bg-slate-800">Visit marketplace <ExternalLink className="h-4 w-4" /></a>}
             </div>
           </div>
         </div>
-      )}
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="space-y-3">
+        <SectionTitle title="TL;DR" eyebrow="Understand this product in 30 seconds" />
+        <TLDRStrip verdict={tldr.verdict} opportunity={tldr.opportunity} risk={tldr.risk} />
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SignalList title="AI Summary: Pros" tone="green" items={report.purchase_drivers || []} empty="Not enough positive review data" />
+        <SignalList title="AI Summary: Cons" tone="red" items={report.pain_points || []} empty="Not enough negative review data" />
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 md:p-8">
+        <SectionTitle title="Sentiment Overview" eyebrow="Customer emotion mix" confidence={confidence.sentiment} />
+        <div className="mt-6 grid grid-cols-1 items-center gap-6 lg:grid-cols-[360px_1fr]">
+          <ChartComponent positive={report.positive_ratio || 0} neutral={Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0))} negative={report.negative_ratio || 0} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Metric label="Positive" value={formatPercent(report.positive_ratio)} tone="green" />
+            <Metric label="Neutral" value={formatPercent(Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0)))} tone="gray" />
+            <Metric label="Negative" value={formatPercent(report.negative_ratio)} tone="red" />
+          </div>
+        </div>
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="space-y-3">
+        <SectionTitle title="Customer Signals" eyebrow="Click a keyword to filter reviews" confidence={confidence.pros_cons} />
+        <KeywordHeatmap positives={keywordInsights.positives} negatives={keywordInsights.negatives} reviews={reviews} onKeywordClick={setSelectedKeyword} />
+      </motion.section>
+
+      <motion.section variants={cardMotion}>
+        <SectionTitle title="What Should You Do" eyebrow="Rule-based actions from pros and cons" confidence={confidence.insights} />
+        <div className="mt-3">
+          <ActionabilityPanel actions={actions} positives={report.purchase_drivers || []} negatives={report.pain_points || []} />
+        </div>
+      </motion.section>
+
+      <motion.section variants={cardMotion}>
+        <ReviewExplorer reviews={reviews} selectedKeyword={selectedKeyword} onKeywordChange={setSelectedKeyword} />
+      </motion.section>
+
+      <motion.section variants={cardMotion}>
+        <RevenuePanel range={revenue.range} currency={revenue.currency} confidence={revenue.confidence} model={revenue.revenue_model} tooltip={revenue.tooltip} />
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 md:p-8">
+        <SectionTitle title="Specs" eyebrow="Product details" />
+        <SpecsGrid specs={specs} />
+      </motion.section>
+
+      <motion.section variants={cardMotion} className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 md:p-8">
+        <SectionTitle title="History" eyebrow="Recent analyses" />
+        <div className="mt-5">
+          <HistorySidebar />
+        </div>
+      </motion.section>
+    </motion.div>
+  );
+}
+
+function Centered({ children }: { children: ReactNode }) {
+  return <div className="flex min-h-[80vh] items-center justify-center px-4">{children}</div>;
+}
+
+function SectionTitle({ title, eyebrow, confidence }: { title: string; eyebrow?: string; confidence?: string }) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        {eyebrow && <p className="text-xs font-black uppercase tracking-widest text-blue-600">{eyebrow}</p>}
+        <h2 className="text-xl font-black tracking-tight text-slate-950 md:text-2xl">{title}</h2>
+      </div>
+      {confidence && <Badge tone={confidence === 'high' ? 'green' : confidence === 'medium' ? 'amber' : 'gray'}>{confidence} confidence</Badge>}
     </div>
   );
 }
 
-function StatCard({ icon, title, value, bg }: { icon: any, title: string, value: string|number, bg: string }) {
+function Badge({ children, tone }: { children: ReactNode; tone: 'green' | 'red' | 'blue' | 'gray' | 'amber' }) {
+  const styles = {
+    green: 'bg-green-50 text-green-700',
+    red: 'bg-red-50 text-red-700',
+    blue: 'bg-blue-50 text-blue-700',
+    gray: 'bg-slate-100 text-slate-600',
+    amber: 'bg-amber-50 text-amber-700',
+  }[tone];
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black uppercase tracking-widest ${styles}`}>{children}</span>;
+}
+
+function SignalList({ title, items, tone, empty }: { title: string; items: string[]; tone: 'green' | 'red'; empty: string }) {
+  const color = tone === 'green' ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50';
   return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-      <div className={clsx("w-12 h-12 rounded-xl flex items-center justify-center mb-4", bg)}>
-        {icon}
+    <motion.div whileHover={{ scale: 1.01 }} className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60">
+      <h3 className="text-lg font-black text-slate-950">{title}</h3>
+      <div className="mt-5 space-y-3">
+        {items.length ? items.slice(0, 5).map((item, idx) => (
+          <div key={idx} className="flex gap-3 rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+            <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 rounded-full ${color}`} />
+            {cleanSignal(item)}
+          </div>
+        )) : <EmptyState text={empty} />}
       </div>
-      <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
+    </motion.div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: 'green' | 'red' | 'gray' }) {
+  const color = tone === 'green' ? 'text-green-700 bg-green-50' : tone === 'red' ? 'text-red-700 bg-red-50' : 'text-slate-700 bg-slate-100';
+  return (
+    <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="rounded-2xl bg-slate-50 p-5">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-400">{label}</p>
+      <p className={`mt-3 inline-flex rounded-xl px-3 py-2 text-2xl font-black ${color}`}>{value}</p>
+    </motion.div>
+  );
+}
+
+function ReviewExplorer({ reviews, selectedKeyword, onKeywordChange }: { reviews: Array<{ title: string; text: string; rating: number }>; selectedKeyword: string; onKeywordChange: (value: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [rating, setRating] = useState('all');
+  const [sentiment, setSentiment] = useState('all');
+  const [sort, setSort] = useState('recent');
+
+  const filtered = useMemo(() => {
+    const q = [search, selectedKeyword].filter(Boolean).join(' ').toLowerCase();
+    return reviews
+      .filter((review) => {
+        const text = `${review.title || ''} ${review.text || ''}`.toLowerCase();
+        const score = Number(review.rating || 0);
+        const matchesSearch = !q || text.includes(q);
+        const matchesRating = rating === 'all' || Math.floor(score) === Number(rating);
+        const bucket = score >= 4 ? 'positive' : score <= 2 ? 'negative' : 'neutral';
+        return matchesSearch && matchesRating && (sentiment === 'all' || sentiment === bucket);
+      })
+      .sort((a, b) => sort === 'negative' ? (a.rating || 0) - (b.rating || 0) : 0);
+  }, [reviews, search, selectedKeyword, rating, sentiment, sort]);
+
+  return (
+    <div className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 md:p-8">
+      <SectionTitle title="Review Explorer" eyebrow="Search, filter, and validate the signals" />
+      <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_140px_150px_150px]">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search reviews" className="w-full rounded-2xl bg-slate-50 py-3 pl-11 pr-4 text-sm font-semibold outline-none ring-1 ring-slate-100 focus:ring-blue-200" />
+        </div>
+        <Select value={rating} onChange={setRating} options={['all', '5', '4', '3', '2', '1']} label="Rating" />
+        <Select value={sentiment} onChange={setSentiment} options={['all', 'positive', 'neutral', 'negative']} label="Sentiment" />
+        <Select value={sort} onChange={setSort} options={['recent', 'negative']} label="Sort" />
+      </div>
+      {selectedKeyword && (
+        <button onClick={() => onKeywordChange('')} className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700">
+          <Filter className="h-3.5 w-3.5" /> Filtering by {selectedKeyword} · clear
+        </button>
+      )}
+      <div className="mt-6 space-y-4">
+        {filtered.length ? filtered.slice(0, 8).map((review, idx) => (
+          <motion.article key={idx} whileHover={{ scale: 1.01 }} className="rounded-2xl bg-slate-50 p-5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="font-black text-slate-900">{review.title || 'Untitled review'}</h3>
+              <Badge tone={(review.rating || 0) >= 4 ? 'green' : (review.rating || 0) <= 2 ? 'red' : 'gray'}>{review.rating || 'N/A'} star</Badge>
+            </div>
+            <p className="text-sm font-medium leading-6 text-slate-600">{highlight(review.text || 'No review text available.', selectedKeyword)}</p>
+          </motion.article>
+        )) : <EmptyState text={reviews.length ? 'No reviews match these filters' : 'No review snippets available'} />}
+      </div>
     </div>
   );
+}
+
+function Select({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: string[]; label: string }) {
+  return (
+    <label className="sr-only">
+      {label}
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="not-sr-only w-full rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold capitalize text-slate-700 outline-none ring-1 ring-slate-100 focus:ring-blue-200">
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function SpecsGrid({ specs }: { specs: string[] }) {
+  if (!specs.length) return <EmptyState text="Not enough specification data" />;
+  return (
+    <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+      {specs.map((spec, idx) => {
+        const [rawKey, ...rest] = spec.includes(':') ? spec.split(':') : ['Feature', spec];
+        return (
+          <div key={idx} className="rounded-2xl bg-slate-50 p-5">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400">{formatLabel(rawKey)}</p>
+            <p className="mt-2 text-sm font-bold text-slate-900">{rest.join(':').trim() || 'Not enough data'}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="rounded-2xl bg-slate-50 p-6 text-center text-sm font-bold text-slate-400">{text}</div>;
+}
+
+function formatCompact(value: number) {
+  if (!value) return 'Not enough data';
+  if (value >= 10000000) return `${trimDecimal(value / 10000000)}Cr`;
+  if (value >= 100000) return `${trimDecimal(value / 100000)}L`;
+  if (value >= 1000) return `${trimDecimal(value / 1000)}K`;
+  return value.toLocaleString();
+}
+
+function trimDecimal(value: number) {
+  return value.toFixed(1).replace('.0', '');
+}
+
+function formatPercent(value?: number) {
+  if (!value || value <= 0) return 'Not enough data';
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatLabel(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()).trim();
+}
+
+function cleanSignal(value: string) {
+  return value.replace(/\s*\(direct from signal\)\s*/gi, '').trim();
+}
+
+function highlight(text: string, keyword: string) {
+  if (!keyword) return text;
+  const lower = text.toLowerCase();
+  const start = lower.indexOf(keyword.toLowerCase());
+  if (start === -1) return text;
+  const end = start + keyword.length;
+  return <>
+    {text.slice(0, start)}
+    <mark className="rounded bg-blue-100 px-1 font-bold text-blue-900">{text.slice(start, end)}</mark>
+    {text.slice(end)}
+  </>;
 }

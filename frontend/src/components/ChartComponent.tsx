@@ -1,4 +1,3 @@
-import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 interface ChartComponentProps {
@@ -7,7 +6,7 @@ interface ChartComponentProps {
   negative: number;
 }
 
-const ChartComponent: React.FC<ChartComponentProps> = ({ positive: pos, neutral: neu, negative: neg }) => {
+export default function ChartComponent({ positive: pos, neutral: neu, negative: neg }: ChartComponentProps) {
   const data = [
     { name: 'Positive', value: Math.round(pos * 100) },
     { name: 'Neutral', value: Math.round(neu * 100) },
@@ -16,11 +15,17 @@ const ChartComponent: React.FC<ChartComponentProps> = ({ positive: pos, neutral:
 
   const COLORS = ['#10b981', '#94a3b8', '#f43f5e']; // Emerald, Slate, Rose
 
+  if (data.length === 0) {
+    return <div className="flex h-[240px] w-full items-center justify-center rounded-2xl bg-slate-50 text-sm font-bold text-slate-400">Not enough sentiment data</div>;
+  }
+
   return (
     <div className="h-[240px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
+            isAnimationActive
+            animationDuration={650}
             data={data}
             cx="50%"
             cy="50%"
@@ -48,6 +53,4 @@ const ChartComponent: React.FC<ChartComponentProps> = ({ positive: pos, neutral:
       </ResponsiveContainer>
     </div>
   );
-};
-
-export default ChartComponent;
+}

@@ -15,20 +15,64 @@ export interface JobResponse {
 
 export interface AnalysisResult {
   product_url: string;
+  product_name?: string;
+  product_image?: string;
   sentiment_score: number;
   positive_ratio: number;
-  top_buying_reasons: string[];
-  top_complaints: string[];
-  improvement_suggestions: string[];
-  confidence_score: number;
+  negative_ratio: number;
+  sentiment_summary: {
+    positive: number;
+    neutral: number;
+    negative: number;
+  };
+  rating_distribution: Record<string, number>;
+  tldr: {
+    verdict: string;
+    opportunity: string;
+    risk: string;
+  };
+  actionability: {
+    fix_immediately: string[];
+    improve_messaging: string[];
+    double_down: string[];
+  };
+  keyword_insights: {
+    positives: Array<{ word: string; intensity: number; frequency_pct: number }>;
+    negatives: Array<{ word: string; intensity: number; frequency_pct: number }>;
+  };
+  market_intelligence_insights: string[];
+  purchase_drivers: string[];
+  pain_points: string[];
+  revenue_estimate: {
+    range: {
+      min_sales: number;
+      max_sales: number;
+      min_revenue: number;
+      max_revenue: number;
+    };
+    currency: string;
+    confidence: string;
+    revenue_model: string;
+    tooltip: string;
+  };
+  confidence_layers: {
+    sentiment: string;
+    revenue: string;
+    pros_cons: string;
+    insights: string;
+  };
+  specs: string[];
+  reviews: Array<{ title: string; text: string; rating: number }>;
   reviews_analyzed: number;
+  source: string;
+  used_llm: boolean;
 }
 
 export interface JobResultResponse {
   status: string;
   progress: number;
   stage: string;
-  result?: AnalysisResult;
+  data?: AnalysisResult;
   error?: string;
   meta: {
     created_at: string;

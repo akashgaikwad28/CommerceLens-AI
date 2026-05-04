@@ -1,4 +1,3 @@
-import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface ComparisonChartProps {
@@ -7,7 +6,7 @@ interface ComparisonChartProps {
   suffix?: string;
 }
 
-const ComparisonChart: React.FC<ComparisonChartProps> = ({ data, color, suffix = '' }) => {
+export default function ComparisonChart({ data, color, suffix = '' }: ComparisonChartProps) {
   return (
     <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -43,6 +42,8 @@ const ComparisonChart: React.FC<ComparisonChartProps> = ({ data, color, suffix =
           />
           <Bar 
             dataKey="value" 
+            isAnimationActive
+            animationDuration={700}
             radius={[0, 8, 8, 0]} 
             barSize={32}
           >
@@ -54,6 +55,4 @@ const ComparisonChart: React.FC<ComparisonChartProps> = ({ data, color, suffix =
       </ResponsiveContainer>
     </div>
   );
-};
-
-export default ComparisonChart;
+}
