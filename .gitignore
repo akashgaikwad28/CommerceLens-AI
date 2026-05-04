@@ -110,3 +110,12 @@ venv.bak/
 
 # Data
 data/
+scraped_data/
+*.db
+*.sqlite3
+
+# Debugging
+debug_screenshot.png
+diagnostic.py
+dump_response.py
+test_serpapi.py
