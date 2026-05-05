@@ -10,7 +10,6 @@ import { getJobResult, JobResultResponse } from '../api/client';
 import { useStore } from '../store/useStore';
 import StatusBadge from '../components/StatusBadge';
 import ProcessingUI from '../components/ProcessingUI';
-import TLDRStrip from '../components/TLDRStrip';
 import ActionabilityPanel from '../components/ActionabilityPanel';
 import KeywordHeatmap from '../components/KeywordHeatmap';
 import RevenuePanel from '../components/RevenuePanel';
@@ -40,7 +39,7 @@ export default function JobDetailPage() {
 
   useEffect(() => {
     if (job?.status === 'completed' && job.data && jobId) {
-      addToHistory(jobId, job.data.product_name || 'Amazon Product');
+      addToHistory(jobId, job.data.product_name || 'Unknown Product');
     }
   }, [job, jobId, addToHistory]);
 
@@ -64,7 +63,7 @@ export default function JobDetailPage() {
             <button onClick={() => refetch()} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 hover:bg-blue-700">
               {isFetching ? 'Retrying...' : 'Retry'}
             </button>
-            <Link to="/analyze" className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">
+            <Link to="/dashboard" className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200">
               New analysis
             </Link>
           </div>
@@ -105,9 +104,10 @@ export default function JobDetailPage() {
   const keywordInsights = report.keyword_insights || { positives: [], negatives: [] };
   const reviews = Array.isArray(report.reviews) ? report.reviews : [];
   const specs = Array.isArray(report.specs) ? report.specs : [];
-  const productName = report.product_name || 'Amazon Product';
+  const productName = report.product_name || 'Unknown Product';
   const reviewsAnalyzed = Number(report.reviews_analyzed || 0);
-  const limitedData = reviews.length === 0 || reviewsAnalyzed < 5;
+  const totalReviews = Number(report.total_reviews || report.data_quality?.review_count || reviewsAnalyzed || reviews.length);
+  const dataState = getDataState(report, reviews.length, totalReviews);
 
   return (
     <motion.div
@@ -121,7 +121,8 @@ export default function JobDetailPage() {
           <ArrowLeft className="h-4 w-4" /> Dashboard
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          {limitedData && <Badge tone="amber">Limited data available</Badge>}
+          {dataState === 'medium' && <Badge tone="amber">Some insights based on partial data</Badge>}
+          {dataState === 'low' && <Badge tone="red">Low Data Availability</Badge>}
           <Badge tone="blue"><Globe className="h-3.5 w-3.5" /> {report.source || 'amazon'}</Badge>
           <StatusBadge status={job.status} />
         </div>
@@ -134,12 +135,13 @@ export default function JobDetailPage() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="mb-3 flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-widest text-slate-400">
-              <span>Product intelligence</span>
-              <span className="flex items-center gap-1 text-amber-500"><Star className="h-3.5 w-3.5 fill-current" /> Review-backed</span>
+              <span>Product analysis</span>
+              <span className="flex items-center gap-1 text-amber-500"><Star className="h-3.5 w-3.5 fill-current" /> Customer reviews</span>
+              <span>Source: {report.source || 'Amazon'}</span>
             </div>
             <h1 className="text-2xl font-black leading-tight tracking-tight text-slate-950 md:text-4xl">{productName}</h1>
             <div className="mt-5 flex flex-wrap items-center gap-4 text-sm font-semibold text-slate-500">
-              <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-600" />{reviewsAnalyzed ? `${formatCompact(reviewsAnalyzed)} signals analyzed` : 'Not enough review data'}</span>
+              <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-green-600" />{totalReviews ? `${formatCompact(totalReviews)} reviews` : 'Low Data Availability'}</span>
               {report.product_url && <a href={report.product_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-white hover:bg-slate-800">Visit marketplace <ExternalLink className="h-4 w-4" /></a>}
             </div>
           </div>
@@ -147,25 +149,29 @@ export default function JobDetailPage() {
       </motion.section>
 
       <motion.section variants={cardMotion} className="space-y-3">
-        <SectionTitle title="TL;DR" eyebrow="Understand this product in 30 seconds" />
-        <TLDRStrip verdict={tldr.verdict} opportunity={tldr.opportunity} risk={tldr.risk} />
+        <SectionTitle title="Quick Insight" eyebrow="Understand this product in 30 seconds" />
+        {dataState === 'low' ? <LowDataMessage /> : <QuickInsight positives={report.purchase_drivers || []} negatives={report.pain_points || []} verdict={tldr.verdict} />}
       </motion.section>
 
       <motion.section variants={cardMotion} className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <SignalList title="AI Summary: Pros" tone="green" items={report.purchase_drivers || []} empty="Not enough positive review data" />
-        <SignalList title="AI Summary: Cons" tone="red" items={report.pain_points || []} empty="Not enough negative review data" />
+        <SignalList title="What Users Love" tone="green" items={report.purchase_drivers || []} empty="Not enough positive review data" />
+        <SignalList title="What Users Complain About" tone="red" items={report.pain_points || []} empty="Not enough negative review data" />
       </motion.section>
 
       <motion.section variants={cardMotion} className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 md:p-8">
-        <SectionTitle title="Sentiment Overview" eyebrow="Customer emotion mix" confidence={confidence.sentiment} />
-        <div className="mt-6 grid grid-cols-1 items-center gap-6 lg:grid-cols-[360px_1fr]">
-          <ChartComponent positive={report.positive_ratio || 0} neutral={Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0))} negative={report.negative_ratio || 0} />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Metric label="Positive" value={formatPercent(report.positive_ratio)} tone="green" />
-            <Metric label="Neutral" value={formatPercent(Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0)))} tone="gray" />
-            <Metric label="Negative" value={formatPercent(report.negative_ratio)} tone="red" />
+        <SectionTitle title="Customer Sentiment Overview" eyebrow="Customer emotion mix" confidence={confidence.sentiment} />
+        {dataState === 'low' || !reviewsAnalyzed ? (
+          <EmptyState text="Not enough sentiment data yet" />
+        ) : (
+          <div className="mt-6 grid grid-cols-1 items-center gap-6 lg:grid-cols-[360px_1fr]">
+            <ChartComponent positive={report.positive_ratio || 0} neutral={Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0))} negative={report.negative_ratio || 0} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Metric label="Positive" value={formatPercent(report.positive_ratio, reviewsAnalyzed)} tone="green" />
+              <Metric label="Neutral" value={formatPercent(Math.max(0, 1 - (report.positive_ratio || 0) - (report.negative_ratio || 0)), reviewsAnalyzed)} tone="gray" />
+              <Metric label="Negative" value={formatPercent(report.negative_ratio, reviewsAnalyzed)} tone="red" />
+            </div>
           </div>
-        </div>
+        )}
       </motion.section>
 
       <motion.section variants={cardMotion} className="space-y-3">
@@ -174,7 +180,7 @@ export default function JobDetailPage() {
       </motion.section>
 
       <motion.section variants={cardMotion}>
-        <SectionTitle title="What Should You Do" eyebrow="Rule-based actions from pros and cons" confidence={confidence.insights} />
+        <SectionTitle title="What Should You Do" eyebrow="Actions from backend review signals" confidence={confidence.insights} />
         <div className="mt-3">
           <ActionabilityPanel actions={actions} positives={report.purchase_drivers || []} negatives={report.pain_points || []} />
         </div>
@@ -228,6 +234,43 @@ function Badge({ children, tone }: { children: ReactNode; tone: 'green' | 'red' 
     amber: 'bg-amber-50 text-amber-700',
   }[tone];
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black uppercase tracking-widest ${styles}`}>{children}</span>;
+}
+
+function LowDataMessage() {
+  return (
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-6 py-5 text-sm font-semibold leading-6 text-rose-900">
+      We couldn't extract enough structured signals for deep analysis. Try another product with more reviews.
+    </div>
+  );
+}
+
+function QuickInsight({ positives, negatives, verdict }: { positives: string[]; negatives: string[]; verdict: string }) {
+  return (
+    <div className="rounded-3xl bg-white p-6 shadow-sm transition hover:shadow-md md:p-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <InsightColumn title="What users love" items={positives} tone="green" />
+        <InsightColumn title="What users complain about" items={negatives} tone="red" />
+        <div className="rounded-2xl bg-slate-950 p-5 text-white">
+          <p className="text-xs font-black uppercase tracking-widest text-slate-400">Verdict</p>
+          <p className="mt-3 text-sm font-semibold leading-6">{verdict || 'Not enough data for a verdict yet.'}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InsightColumn({ title, items, tone }: { title: string; items: string[]; tone: 'green' | 'red' }) {
+  const color = tone === 'green' ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50';
+  return (
+    <div className="rounded-2xl bg-slate-50 p-5">
+      <p className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-widest ${color}`}>{title}</p>
+      <div className="mt-4 space-y-2">
+        {items.length ? items.slice(0, 3).map((item, idx) => (
+          <p key={idx} className="text-sm font-semibold leading-6 text-slate-700">{cleanSignal(item)}</p>
+        )) : <p className="text-sm font-semibold text-slate-400">Not Available</p>}
+      </div>
+    </div>
+  );
 }
 
 function SignalList({ title, items, tone, empty }: { title: string; items: string[]; tone: 'green' | 'red'; empty: string }) {
@@ -303,7 +346,7 @@ function ReviewExplorer({ reviews, selectedKeyword, onKeywordChange }: { reviews
             </div>
             <p className="text-sm font-medium leading-6 text-slate-600">{highlight(review.text || 'No review text available.', selectedKeyword)}</p>
           </motion.article>
-        )) : <EmptyState text={reviews.length ? 'No reviews match these filters' : 'No review snippets available'} />}
+        )) : <EmptyState text={reviews.length ? 'No reviews match these filters' : "We couldn't extract readable review samples from this product."} />}
       </div>
     </div>
   );
@@ -353,9 +396,18 @@ function trimDecimal(value: number) {
   return value.toFixed(1).replace('.0', '');
 }
 
-function formatPercent(value?: number) {
-  if (!value || value <= 0) return 'Not enough data';
+function formatPercent(value?: number, sampleSize = 0) {
+  if (!sampleSize) return 'Not Available';
+  if (typeof value !== 'number' || value < 0) return 'Not Available';
   return `${Math.round(value * 100)}%`;
+}
+
+function getDataState(report: any, reviewSnippets: number, totalReviews: number): 'high' | 'medium' | 'low' {
+  const backendState = report.data_quality?.confidence;
+  if (backendState === 'high' || backendState === 'medium' || backendState === 'low') return backendState;
+  if (totalReviews >= 1000 && reviewSnippets >= 50) return 'high';
+  if (totalReviews >= 200 || reviewSnippets >= 20) return 'medium';
+  return 'low';
 }
 
 function formatLabel(value: string) {

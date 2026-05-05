@@ -12,6 +12,7 @@ interface ActionabilityProps {
 
 export default function ActionabilityPanel({ actions, positives = [], negatives = [] }: ActionabilityProps) {
   const recommended = buildRuleBasedActions(actions, positives, negatives);
+  const hasSignals = recommended.fix.length > 0 || recommended.message.length > 0 || recommended.grow.length > 0;
 
   return (
     <div className="bg-white rounded-3xl shadow-lg shadow-slate-200/60 p-6 md:p-8 space-y-8">
@@ -25,7 +26,7 @@ export default function ActionabilityPanel({ actions, positives = [], negatives 
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-2xl text-blue-700">
           <Zap className="w-4 h-4 text-amber-500" />
-          <span className="text-[10px] font-black uppercase tracking-widest">Decision Ready</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">{hasSignals ? 'Backend Signals' : 'Limited Data'}</span>
         </div>
       </div>
 

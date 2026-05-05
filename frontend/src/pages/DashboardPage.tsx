@@ -1,13 +1,21 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getJobs } from '../api/client';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { analyzeProduct, getJobs } from '../api/client';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import StatusBadge from '../components/StatusBadge';
 import HistorySidebar from '../components/HistorySidebar';
-import { BarChart3, Clock, CheckCircle, Search, ArrowRight, Activity, Zap } from 'lucide-react';
+import { BarChart3, Clock, CheckCircle, Search, ArrowRight, Activity, Zap, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import { useStore } from '../store/useStore';
 
 export default function DashboardPage() {
+  const location = useLocation() as { state?: { url?: string } };
+  const navigate = useNavigate();
+  const landingUrl = location.state?.url;
+  const autoTriggeredRef = useRef(false);
+  const { lastSearchUrl, setLastSearchUrl } = useStore();
+  const [url, setUrl] = useState(landingUrl || lastSearchUrl || '');
+
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['jobs'],
     queryFn: getJobs,
@@ -28,6 +36,33 @@ export default function DashboardPage() {
     };
   }, [jobs]);
 
+  const mutation = useMutation({
+    mutationFn: (productUrl: string) => analyzeProduct(productUrl, 3),
+    onSuccess: (data) => {
+      navigate(`/job/${data.job_id}`);
+    },
+  });
+
+  const startAnalysis = (productUrl: string) => {
+    const trimmedUrl = productUrl.trim();
+    if (!trimmedUrl || mutation.isPending) return;
+
+    setLastSearchUrl(trimmedUrl);
+    mutation.mutate(trimmedUrl);
+  };
+
+  useEffect(() => {
+    if (!landingUrl || autoTriggeredRef.current) return;
+    autoTriggeredRef.current = true;
+    setUrl(landingUrl);
+    startAnalysis(landingUrl);
+  }, [landingUrl]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    startAnalysis(url);
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-12 py-8 animate-pulse">
@@ -40,15 +75,59 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-10 py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="flex flex-col lg:flex-row gap-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex-1 space-y-12">
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100 rounded-full text-blue-600 text-[10px] font-black uppercase tracking-widest">
             <Activity className="w-3 h-3" />
             Active Market Intelligence
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Executive Dashboard</h1>
-          <p className="text-slate-500 font-medium">Monitoring all AI-driven customer sentiment tasks across your portfolio.</p>
+          <h1 className="text-4xl font-semibold text-slate-950 tracking-tight">Recent Analyses</h1>
+          <p className="text-slate-500 font-medium">Review your latest product intelligence reports and active jobs.</p>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-blue-600">Analyze product</p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">Start a new intelligence report</h2>
+            </div>
+            {mutation.isPending && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-xs font-black uppercase tracking-widest text-blue-700">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Initializing
+              </span>
+            )}
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 md:flex-row">
+            <label className="relative flex-1">
+              <span className="sr-only">Amazon product URL</span>
+              <Search className="absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Paste Amazon Product URL..."
+                className="h-14 w-full rounded-2xl bg-slate-50 pl-12 pr-4 text-sm font-semibold text-slate-950 outline-none ring-1 ring-slate-100 transition-all placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={mutation.isPending || !url.trim()}
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-sm font-black text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95 disabled:bg-slate-300"
+            >
+              {mutation.isPending ? 'Analyzing...' : 'Analyze Now'}
+              {mutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+            </button>
+          </form>
+
+          {mutation.isError && (
+            <p className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              Analysis could not be started. Check the URL and make sure the backend is running.
+            </p>
+          )}
         </div>
 
         {/* High-Impact Stats */}
@@ -85,7 +164,7 @@ export default function DashboardPage() {
               Recent Intelligence Tasks
             </h2>
             <Link to="/analyze" className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors">
-              New Analysis →
+              New Analysis
             </Link>
           </div>
           

@@ -8,6 +8,7 @@ import ProgressBar from '../components/ProgressBar';
 import StatusBadge from '../components/StatusBadge';
 import ComparisonChart from '../components/ComparisonChart';
 import clsx from 'clsx';
+import { useStore } from '../store/useStore';
 
 type Product = {
   url?: string;
@@ -16,6 +17,7 @@ type Product = {
   sentiment_score?: number;
   review_count?: number;
   confidence_score?: number;
+  price?: number | string;
   top_pros?: string[];
   top_cons?: string[];
 };
@@ -37,7 +39,11 @@ type NormalizedProduct = Product & {
 export default function ComparisonPage() {
   const [searchParams] = useSearchParams();
   const jobParam = searchParams.get('job');
-  const [urls, setUrls] = useState<string[]>(['', '']);
+  const { lastComparisonList, setLastComparisonList } = useStore();
+  const [urls, setUrls] = useState<string[]>(() => {
+    const savedUrls = lastComparisonList.filter(Boolean).slice(0, 5);
+    return savedUrls.length >= 2 ? savedUrls : ['', ''];
+  });
   const [activeJobId, setActiveJobId] = useState<string | null>(jobParam);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
 
@@ -70,7 +76,9 @@ export default function ComparisonPage() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (urls.filter(u => u.trim()).length < 2) return;
+    const cleanUrls = urls.filter(u => u.trim());
+    if (cleanUrls.length < 2) return;
+    setLastComparisonList(cleanUrls);
     mutation.mutate(urls);
   };
 
@@ -221,7 +229,10 @@ function DecisionStrip({ intelligence }: { intelligence: ReturnType<typeof build
             <div className={clsx('mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl', color)}><Icon className="w-5 h-5" /></div>
             <p className="text-xs font-black uppercase tracking-widest text-slate-400">{label}</p>
             <p className="mt-2 text-lg font-black leading-tight" title={product?.name}>{product?.displayName || 'More data needed'}</p>
-            <p className="mt-3 text-sm font-semibold leading-5 text-slate-300">{reason}</p>
+            <div className="mt-3 space-y-2 text-sm font-semibold leading-5 text-slate-300">
+              <p>Why?</p>
+              {reason.split('|').map((line) => <p key={line}>- {line}</p>)}
+            </div>
             <span className={clsx('mt-4 inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest', confidenceClass(product?.confidencePct || 0))}>
               {confidenceLabel(product?.confidencePct || 0)} confidence
             </span>
@@ -272,14 +283,14 @@ function MetricsMatrix({ intelligence, expandedProduct, onToggle }: { intelligen
           <p className="text-xs font-black uppercase tracking-widest text-blue-600">Metrics Matrix</p>
           <h3 className="text-2xl font-black text-slate-950">Side-by-side evidence</h3>
         </div>
-        {intelligence.limited && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">Limited data available</span>}
+        {intelligence.limited && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">Low Data Availability</span>}
       </div>
       <div className="space-y-3">
         {intelligence.products.map((p) => (
           <motion.div key={p.name} whileHover={{ scale: 1.01 }} onClick={() => onToggle(expandedProduct === p.name ? null : p.name)} className="grid cursor-pointer grid-cols-1 gap-4 rounded-2xl bg-slate-50 p-4 md:grid-cols-[1.4fr_0.6fr_0.9fr_0.7fr_0.7fr] md:items-center">
             <div className="font-black text-slate-900 truncate" title={p.name}>{p.displayName}</div>
-            <MetricCell icon={Star} label="Rating" value={p.ratingValue.toFixed(1)} best={p.name === intelligence.bestRating?.name} derived={p.metricSource === 'derived'} />
-            <MetricCell icon={Smile} label="Sentiment" value={`${p.sentimentPct}%`} bar={p.sentimentPct} best={p.name === intelligence.bestSentiment?.name} worst={p.name === intelligence.worstSentiment?.name} tooltip="Score calculated using sentiment, rating, and review volume." derived={p.metricSource === 'derived'} />
+            <MetricCell icon={Star} label="Rating" value={p.ratingValue ? p.ratingValue.toFixed(1) : 'Not Available'} best={p.name === intelligence.bestRating?.name} derived={p.metricSource === 'derived'} />
+            <MetricCell icon={Smile} label="Customer Sentiment" value={p.sentimentPct ? `${p.sentimentPct}%` : 'Not Available'} bar={p.sentimentPct} best={p.name === intelligence.bestSentiment?.name} worst={p.name === intelligence.worstSentiment?.name} tooltip="Uses backend sentiment fields only. Not Available is shown when direct sentiment is missing." derived={p.metricSource === 'derived'} />
             <MetricCell icon={MessageCircle} label="Reviews" value={formatCompact(p.reviewCount)} best={p.name === intelligence.bestVolume?.name} />
             <MetricCell icon={ShieldCheck} label="Confidence" value={`${p.confidencePct}%`} best={p.name === intelligence.bestConfidence?.name} tooltip="Confidence reflects available review volume and extraction quality." />
           </motion.div>
@@ -290,11 +301,11 @@ function MetricsMatrix({ intelligence, expandedProduct, onToggle }: { intelligen
 }
 
 function VisualComparison({ products }: { products: NormalizedProduct[] }) {
-  const sentimentData = products.map((p) => ({ name: shortName(p.displayName, 18), value: p.sentimentPct }));
+  const sentimentData = products.filter((p) => p.sentimentPct > 0).map((p) => ({ name: shortName(p.displayName, 18), value: p.sentimentPct }));
   const reviewData = products.map((p) => ({ name: shortName(p.displayName, 18), value: logReviewValue(p.reviewCount) }));
   return (
     <motion.section variants={fadeCard} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <ChartCard title="Sentiment Comparison" data={sentimentData} color="#16a34a" suffix="%" empty="Limited sentiment data - based on review volume + confidence signals" />
+      {sentimentData.length ? <ChartCard title="Customer Sentiment Comparison" data={sentimentData} color="#16a34a" suffix="%" empty="Not enough sentiment data to visualize comparison" /> : <div className="rounded-3xl bg-white p-6 shadow-lg shadow-slate-200/60 text-sm font-bold text-slate-500">Not enough sentiment data to visualize comparison</div>}
       <ChartCard title="Review Volume Graph" data={reviewData} color="#2563eb" suffix=" log" empty="Review volume signals are still being normalized" />
     </motion.section>
   );
@@ -337,7 +348,7 @@ function MetricCell({ icon: Icon, label, value, bar, best, worst, tooltip, deriv
     <div className={clsx('rounded-xl bg-white p-3', best && 'ring-1 ring-green-200 bg-green-50', worst && 'ring-1 ring-red-100 bg-red-50')} title={tooltip}>
       <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400"><Icon className="w-3.5 h-3.5" /> {label}</div>
       <div className={clsx('mt-2 text-sm font-black', best ? 'text-green-700' : worst ? 'text-red-700' : 'text-slate-800')}>{value}</div>
-      {derived && <div className="mt-1 text-[10px] font-bold text-amber-600">derived signal</div>}
+      {derived && <div className="mt-1 text-[10px] font-bold text-amber-600">Estimated from available data</div>}
       {bar !== undefined && bar > 0 && <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${bar}%` }} className="h-full rounded-full bg-green-500" /></div>}
     </div>
   );
@@ -382,8 +393,8 @@ function buildComparisonIntelligence(result: any) {
   const products: NormalizedProduct[] = Array.isArray(result?.products) ? result.products.map(normalizeProduct) : [];
   const ranked = [...products].sort((a, b) => b.score - a.score);
   const bestOverall = ranked[0];
-  let bestValue = pickBest(products, (p) => p.valueScore);
-  let bestQuality = pickBest(products.filter((p) => p.reviewCount >= 500), (p) => p.qualityScore) || pickBest(products, (p) => p.qualityScore);
+  let bestValue = pickBestValue(products, bestOverall);
+  let bestQuality = pickBest(products.filter((p) => p.sentimentPct > 0), (p) => p.sentimentPct, (p) => p.ratingValue) || pickBest(products, (p) => p.qualityScore);
 
   if (products.length > 1 && bestOverall && bestValue?.name === bestOverall.name && bestQuality?.name === bestOverall.name) {
     bestValue = ranked.find((p) => p.name !== bestOverall.name) || bestValue;
@@ -417,26 +428,24 @@ function buildComparisonIntelligence(result: any) {
 
 function normalizeProduct(raw: Product): NormalizedProduct {
   const reviewCount = Number(raw.review_count || (raw as any).reviews_analyzed || (raw as any).total_reviews || 0);
-  const confidencePct = normalizePercent(raw.confidence_score || (raw as any).confidence || 0.8);
+  const confidencePct = normalizePercent(raw.confidence_score || (raw as any).confidence || (reviewCount ? Math.min(1, reviewCount / 1000) : 0));
   const directRating = Number(raw.rating || (raw as any).reviews_information?.rating || 0);
   const directSentiment = normalizePercent(raw.sentiment_score || (raw as any).positive_ratio || (raw as any).positive_percentage || 0);
-  const strengths = normalizeSignals(raw.top_pros, raw.name, 'pro');
-  const risks = normalizeSignals(raw.top_cons, raw.name, 'con');
-  const estimatedSentiment = directSentiment || estimateSentiment(strengths, risks, reviewCount, confidencePct);
-  const estimatedRating = directRating || estimateRating(estimatedSentiment, confidencePct, reviewCount);
-  const priceProxy = estimatePriceProxy(raw.name, strengths);
-  const score = (estimatedRating * 0.35) + ((estimatedSentiment / 20) * 0.30) + (Math.log10(Math.max(reviewCount, 1)) * 0.20) + ((confidencePct / 20) * 0.15);
+  const strengths = normalizeSignals(raw.top_pros);
+  const risks = normalizeSignals(raw.top_cons);
+  const price = parsePrice(raw.price);
+  const score = (directRating * 0.35) + ((directSentiment / 20) * 0.30) + (Math.log10(Math.max(reviewCount, 1)) * 0.20) + ((confidencePct / 20) * 0.15);
 
   return {
     ...raw,
     displayName: shortName(raw.name),
-    ratingValue: round1(estimatedRating),
-    sentimentPct: Math.round(estimatedSentiment),
+    ratingValue: round1(directRating),
+    sentimentPct: Math.round(directSentiment),
     reviewCount,
     confidencePct,
     score,
-    valueScore: (estimatedSentiment / priceProxy) + estimatedRating,
-    qualityScore: estimatedRating + (estimatedSentiment / 25) + (reviewCount >= 500 ? 0.4 : 0),
+    valueScore: price ? (directSentiment + directRating * 10) / price : directSentiment + directRating,
+    qualityScore: directRating + (directSentiment / 25) + (reviewCount >= 500 ? 0.4 : 0),
     metricSource: directRating && directSentiment ? 'direct' : 'derived',
     strengths,
     risks,
@@ -451,18 +460,20 @@ function buildTradeoffs(products: NormalizedProduct[], winner?: NormalizedProduc
   if (winner.sentimentPct > challenger.sentimentPct) lines.push(`Higher sentiment (+${winner.sentimentPct - challenger.sentimentPct}%)`);
   if (winner.reviewCount > challenger.reviewCount * 2) lines.push(`${formatCompact(winner.reviewCount)} reviews -> stronger market validation`);
   if (!hasRisk(winner, 'connect') && hasRisk(challenger, 'connect')) lines.push('Fewer visible connectivity complaints');
-  lines.push(`Stronger core signal: ${winner.strengths[0]}`);
+  if (winner.strengths[0]) lines.push(`Stronger core signal: ${winner.strengths[0]}`);
   lines.push(`Where ${challenger.displayName} Competes`);
   if (challenger.reviewCount > winner.reviewCount * 2) lines.push(`${formatCompact(challenger.reviewCount)} reviews -> stronger trust base`);
   if (challenger.valueScore > winner.valueScore) lines.push('Better value perception from customer signals');
-  lines.push(`${challenger.strengths[0]} remains a meaningful advantage`);
+  if (challenger.strengths[0]) lines.push(`${challenger.strengths[0]} remains a meaningful advantage`);
+  if (lines.length <= 2) lines.push('Risk Factors: Low review confidence or missing sentiment');
   return lines;
 }
 
 function buildFinalNote(winner: NormalizedProduct | undefined, runnerUp?: NormalizedProduct) {
   if (!winner) return 'Not enough data to determine a clear winner. Add products with extractable review data for a stronger recommendation.';
-  const runnerText = runnerUp ? `${runnerUp.displayName} remains viable if you prioritize ${runnerUp.strengths[0].toLowerCase()}, but shows risk around ${runnerUp.risks[0].toLowerCase()}.` : '';
-  return `${winner.displayName} is the better choice for most users due to stronger sentiment (${winner.sentimentPct}%) and a review base of ${formatCompact(winner.reviewCount)} signals, indicating consistent real-world performance. Users most often value ${winner.strengths[0].toLowerCase()}, while the main risk to watch is ${winner.risks[0].toLowerCase()}. ${runnerText}`;
+  if (!winner.sentimentPct || !winner.reviewCount) return 'Low Data Availability. Compare products with direct sentiment and review-count fields for a stronger recommendation.';
+  const runnerText = runnerUp && runnerUp.strengths[0] && runnerUp.risks[0] ? `${runnerUp.displayName} remains viable if you prioritize ${runnerUp.strengths[0].toLowerCase()}, but shows risk around ${runnerUp.risks[0].toLowerCase()}.` : '';
+  return `${winner.displayName} is the better choice for most users due to stronger sentiment (${winner.sentimentPct}%) and a review base of ${formatCompact(winner.reviewCount)} signals. ${runnerText}`;
 }
 
 function pickBest<T extends Product>(products: T[], primary: (p: T) => number, tie: (p: T) => number = () => 0) {
@@ -471,6 +482,11 @@ function pickBest<T extends Product>(products: T[], primary: (p: T) => number, t
 
 function pickWorst<T extends Product>(products: T[], primary: (p: T) => number) {
   return [...products].sort((a, b) => primary(a) - primary(b))[0];
+}
+
+function pickBestValue(products: NormalizedProduct[], bestOverall?: NormalizedProduct) {
+  const candidates = products.filter((p) => p.name !== bestOverall?.name && p.sentimentPct >= 50);
+  return pickBest(candidates.length ? candidates : products.filter((p) => p.name !== bestOverall?.name), (p) => p.valueScore) || bestOverall;
 }
 
 function normalizeStatus(status?: string) {
@@ -483,37 +499,10 @@ function normalizePercent(value: any) {
   return numeric <= 1 ? Math.round(numeric * 100) : Math.round(numeric);
 }
 
-function estimateSentiment(strengths: string[], risks: string[], reviewCount: number, confidencePct: number) {
-  const positiveBoost = Math.min(12, strengths.length * 4);
-  const riskPenalty = Math.min(10, risks.length * 2);
-  const volumeBoost = Math.min(8, Math.log10(Math.max(reviewCount, 1)) * 1.5);
-  return clamp(62 + positiveBoost + volumeBoost + (confidencePct * 0.08) - riskPenalty, 55, 94);
-}
-
-function estimateRating(sentimentPct: number, confidencePct: number, reviewCount: number) {
-  const volumeBoost = Math.min(0.25, Math.log10(Math.max(reviewCount, 1)) / 20);
-  return clamp(3.35 + (sentimentPct / 100) * 1.05 + (confidencePct / 100) * 0.25 + volumeBoost, 3.6, 4.8);
-}
-
-function estimatePriceProxy(name: string, strengths: string[]) {
-  const text = `${name} ${strengths.join(' ')}`.toLowerCase();
-  if (text.includes('boat') || text.includes('value') || text.includes('budget')) return 0.82;
-  if (text.includes('oneplus')) return 1.0;
-  return 0.95;
-}
-
-function normalizeSignals(items: string[] | undefined, name: string, type: 'pro' | 'con') {
+function normalizeSignals(items: string[] | undefined) {
   const clean = (items || []).map(cleanSignal).filter(Boolean);
   if (clean.length) return clean;
-  const lower = name.toLowerCase();
-  if (type === 'pro') {
-    if (lower.includes('oneplus')) return ['Sound quality', 'Balanced audio profile'];
-    if (lower.includes('boat')) return ['Value perception', 'Battery life'];
-    return ['Positive customer satisfaction', 'Category fit'];
-  }
-  if (lower.includes('oneplus')) return ['Reliability concerns', 'Connectivity complaints'];
-  if (lower.includes('boat')) return ['Fit concerns', 'Long-term reliability'];
-  return ['Mixed durability feedback', 'Limited complaint detail'];
+  return [];
 }
 
 function hasRisk(product: NormalizedProduct, token: string) {
@@ -521,15 +510,18 @@ function hasRisk(product: NormalizedProduct, token: string) {
 }
 
 function overallReason(product: NormalizedProduct) {
-  return `Score ${product.score.toFixed(2)} from ${product.sentimentPct}% sentiment + ${formatCompact(product.reviewCount)} reviews`;
+  if (!product.sentimentPct || !product.reviewCount) return 'Low Data Availability';
+  return `${formatCompact(product.reviewCount)} reviews|${product.sentimentPct}% customer sentiment|Balanced confidence score`;
 }
 
 function valueReason(product: NormalizedProduct) {
-  return `${product.sentimentPct}% satisfaction weighted against value perception`;
+  if (!product.sentimentPct) return 'Low Data Availability';
+  return `${product.sentimentPct}% customer sentiment|Competitive value from available price/review data|Different choice than best overall`;
 }
 
 function qualityReason(product: NormalizedProduct) {
-  return `${product.ratingValue.toFixed(1)} quality score with ${formatCompact(product.reviewCount)} signals`;
+  if (!product.sentimentPct && !product.ratingValue) return 'Low Data Availability';
+  return `${product.sentimentPct || 'Not Available'}% customer sentiment|${product.ratingValue ? `${product.ratingValue.toFixed(1)} rating` : 'Rating not available'}|Strongest available quality signal`;
 }
 
 function confidenceLabel(value: number) {
@@ -546,10 +538,6 @@ function confidenceClass(value: number) {
 
 function logReviewValue(value: number) {
   return Math.round(Math.log10(Math.max(value, 1)) * 20);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function round1(value: number) {
@@ -574,6 +562,13 @@ function shortName(name = 'Product', max = 52) {
 
 function cleanSignal(value = '') {
   return value.replace(/\s*\(direct from signal\)\s*/gi, '').trim() || 'Not Available';
+}
+
+function parsePrice(value: Product['price']) {
+  if (typeof value === 'number') return value > 0 ? value : 0;
+  if (!value) return 0;
+  const parsed = Number(String(value).replace(/[^\d.]/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 const fadeCard = {

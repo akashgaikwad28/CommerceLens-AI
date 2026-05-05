@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { analyzeProduct } from '../api/client';
 import { Search, ChevronRight, Zap, Target, BarChart3, Info, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useStore } from '../store/useStore';
 
 export default function AnalysisPage() {
-  const [url, setUrl] = useState('');
+  const location = useLocation() as { state?: { url?: string } };
+  const urlFromLanding = location.state?.url || '';
+  const [url, setUrl] = useState(urlFromLanding);
   const [maxPages, setMaxPages] = useState(3);
   const navigate = useNavigate();
+  const autoTriggeredRef = useRef(false);
+  const { setLastSearchUrl } = useStore();
 
   const mutation = useMutation({
     mutationFn: ({ url, pages }: { url: string; pages: number }) => analyzeProduct(url, pages),
@@ -17,18 +22,26 @@ export default function AnalysisPage() {
     },
   });
 
+  useEffect(() => {
+    if (!urlFromLanding || autoTriggeredRef.current) return;
+    autoTriggeredRef.current = true;
+    setLastSearchUrl(urlFromLanding);
+    mutation.mutate({ url: urlFromLanding, pages: maxPages });
+  }, [urlFromLanding]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) return;
+    setLastSearchUrl(url);
     mutation.mutate({ url, pages: maxPages });
   };
 
   return (
     <div className="max-w-4xl space-y-12 py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="space-y-2">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tight">Intelligence Node</h1>
+        <h1 className="text-4xl font-semibold text-slate-950 tracking-tight">Analyze Product</h1>
         <p className="text-slate-500 font-medium leading-relaxed max-w-2xl">
-          Deploy an analysis task to extract structured market signals. Our AI engine will scrape, synthesize, and benchmark the product against category norms.
+          Paste an Amazon product URL to create a review-backed market intelligence report.
         </p>
       </div>
 
@@ -56,7 +69,7 @@ export default function AnalysisPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-4">
-              <label className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1">Signal Depth</label>
+              <label className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1">Data Reliability</label>
               <div className="relative">
                 <select
                   className="w-full px-6 py-5 rounded-2xl border border-slate-200 focus:border-blue-500 outline-none transition-all appearance-none bg-slate-50/50 font-bold text-slate-700 cursor-pointer"
@@ -111,7 +124,7 @@ export default function AnalysisPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8">
          <SmallProp 
             icon={<Target className="w-5 h-5 text-indigo-500" />} 
-            title="Signal Extraction" 
+            title="Data Reliability" 
             desc="Identifying purchase triggers." 
          />
          <SmallProp 

@@ -16,6 +16,7 @@ interface RevenueProps {
 export default function RevenuePanel({ range, currency, confidence, model, tooltip }: RevenueProps) {
   const hasSales = Number(range?.min_sales || 0) > 0 || Number(range?.max_sales || 0) > 0;
   const hasRevenue = Number(range?.min_revenue || 0) > 0 || Number(range?.max_revenue || 0) > 0;
+  const hasRevenueSignals = hasSales || hasRevenue;
   const salesText = hasSales ? formatRange(range.min_sales, range.max_sales) : 'Not enough data';
   const revenueText = hasRevenue ? `${currency}${formatRange(range.min_revenue, range.max_revenue)}` : 'Not enough data';
 
@@ -54,6 +55,11 @@ export default function RevenuePanel({ range, currency, confidence, model, toolt
           <p className="text-sm font-medium text-slate-500">Projected marketplace performance. Treat as directional, not exact.</p>
         </div>
 
+        {!hasRevenueSignals ? (
+          <div className="rounded-2xl bg-slate-50 p-6 text-sm font-semibold text-slate-500">
+            Revenue estimation requires more review data.
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
           <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
             <div className="flex items-center gap-3">
@@ -85,6 +91,7 @@ export default function RevenuePanel({ range, currency, confidence, model, toolt
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div className="flex items-start gap-3 p-5 bg-blue-50 rounded-3xl">
