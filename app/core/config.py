@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     PROXY_URL: Optional[str] = None
     USE_FREE_PROXIES: bool = False
     
+    # Deployment Settings
+    ENVIRONMENT: str = "development" # "development" or "production"
+    DISABLE_PLAYWRIGHT_IN_PROD: bool = True
+    
     class Config:
         case_sensitive = True
         env_file = ".env"

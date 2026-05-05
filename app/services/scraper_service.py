@@ -39,6 +39,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 ]
 
+MIN_REVIEW_WARNING_THRESHOLD = 100
+
 class AmazonScraperService:
     def __init__(self):
         self._seen_reviews: Set[str] = set()
@@ -55,25 +57,29 @@ class AmazonScraperService:
             result = await self._scrape_via_http(asin, domain, max_pages)
             if result and result.get("reviews"):
                 logger.info(f"[SCRAPER] HTTP Success! Found {len(result['reviews'])} reviews.")
-                return result
+                return self._with_confidence_flags(result)
         except BlockedException:
             logger.warning("[SCRAPER] HTTP path blocked by Sign-in wall. Falling back to Playwright.")
         except Exception as e:
             logger.warning(f"[SCRAPER] HTTP path failed: {e}. Falling back to Playwright.")
 
         # ── Strategy 2: Stealth Playwright Path ───────────────
-        try:
-            logger.info(f"[SCRAPER] Attempting Stealth Playwright path for ASIN: {asin}")
-            result = await self._scrape_via_playwright(asin, domain, max_pages)
-            if result and result.get("reviews"):
-                logger.info(f"[SCRAPER] Playwright Success! Found {len(result['reviews'])} reviews.")
-                return result
-        except Exception as e:
-            logger.warning(f"[SCRAPER] Playwright path failed: {e}. Escalating to SerpApi.")
+        # Skip Playwright in production if disabled (common for free-tier hosting)
+        if settings.ENVIRONMENT == "production" and settings.DISABLE_PLAYWRIGHT_IN_PROD:
+            logger.info("[SCRAPER] Skipping Playwright (Disabled in Production). Escalating to SerpApi.")
+        else:
+            try:
+                logger.info(f"[SCRAPER] Attempting Stealth Playwright path for ASIN: {asin}")
+                result = await self._scrape_via_playwright(asin, domain, max_pages)
+                if result and result.get("reviews"):
+                    logger.info(f"[SCRAPER] Playwright Success! Found {len(result['reviews'])} reviews.")
+                    return self._with_confidence_flags(result)
+            except Exception as e:
+                logger.warning(f"[SCRAPER] Playwright path failed: {e}. Escalating to SerpApi.")
 
         # ── Strategy 3: SerpApi (Reliable Structured Data) ────
         logger.info(f"[SCRAPER] Attempting SerpApi path for ASIN: {asin}")
-        return await self._scrape_via_serpapi(asin, domain)
+        return self._with_confidence_flags(await self._scrape_via_serpapi(asin, domain))
 
     # ──────────────────────────────────────────────────────
     # Strategy A: HTTPX (Fast)
@@ -179,7 +185,8 @@ class AmazonScraperService:
                 "engine": "amazon_product",
                 "asin": asin,
                 "amazon_domain": amazon_domain,
-                "device": "mobile"
+                "device": "mobile",
+                "no_cache": True,
             })
 
         try:
@@ -194,11 +201,22 @@ class AmazonScraperService:
             rev_info = results.get("reviews_information", {})
             insights = rev_info.get("summary", {}).get("insights", [])
 
-            # Extract raw reviews from any possible source
-            raw_reviews = results.get("authors_reviews", [])
-            if not raw_reviews: raw_reviews = results.get("reviews", [])
+            logger.info(
+                "[SCRAPER] SerpApi review containers: "
+                f"top_level_authors={len(results.get('authors_reviews', []) or [])}, "
+                f"nested_authors={len(rev_info.get('authors_reviews', []) or [])}, "
+                f"other_countries={len(rev_info.get('other_countries_reviews', []) or [])}, "
+                f"insights={len(insights or [])}"
+            )
+
+            # Prefer the documented nested reviews_information.authors_reviews path first.
+            raw_reviews = rev_info.get("authors_reviews", []) or []
             if not raw_reviews:
-                raw_reviews = rev_info.get("other_countries_reviews", []) or rev_info.get("reviews", [])
+                raw_reviews = results.get("authors_reviews", []) or []
+            if not raw_reviews:
+                raw_reviews = results.get("reviews", []) or []
+            if not raw_reviews:
+                raw_reviews = rev_info.get("other_countries_reviews", []) or rev_info.get("reviews", []) or []
 
             reviews = []
             for r in raw_reviews:
@@ -210,9 +228,22 @@ class AmazonScraperService:
                         "rating": r.get("rating", 5.0)
                     })
 
+            # If SerpApi only gives structured insights, convert examples into readable review snippets.
+            if not reviews and insights:
+                for insight in insights:
+                    for example in insight.get("examples", []) or []:
+                        snippet = (example.get("snippet") or "").strip()
+                        if snippet:
+                            reviews.append({
+                                "title": insight.get("title", "Review insight"),
+                                "text": snippet,
+                                "rating": self._estimate_rating_from_sentiment(insight.get("sentiment")),
+                            })
+            logger.info(f"[SCRAPER] SerpApi reviews fetched: {len(reviews)}")
+
             # Extract pros/cons
-            pros = list(set([i.get("title") for i in insights if i.get("sentiment") == "positive"]))
-            cons = list(set([i.get("title") for i in insights if i.get("sentiment") in ["negative", "mixed"]]))
+            pros = list({i.get("title") for i in insights if i.get("sentiment") == "positive" and i.get("title")})
+            cons = list({i.get("title") for i in insights if i.get("sentiment") in ["negative", "mixed"] and i.get("title")})
             summary = rev_info.get("summary", {}).get("text", "")
 
             # Extract specs
@@ -225,7 +256,12 @@ class AmazonScraperService:
             # Get total review count
             specs_raw = results.get("product_details", {})
             _, total_review_count = self._extract_rating_and_count(specs_raw.get("customer_reviews"))
-            total_review_count = total_review_count or len(reviews)
+            total_review_count = total_review_count or self._extract_review_count_from_summary(rev_info) or len(reviews)
+            if total_review_count < MIN_REVIEW_WARNING_THRESHOLD:
+                logger.warning(
+                    f"[SCRAPER] Insufficient SerpApi data, flagging low confidence. "
+                    f"review_count={total_review_count}, fetched={len(reviews)}"
+                )
 
             # Get price
             price = specs_raw.get("price", 0.0)
@@ -239,11 +275,14 @@ class AmazonScraperService:
                 "method": "serpapi",
                 "pros": pros,
                 "cons": cons,
+                "insights": insights,
                 "summary": summary,
                 "review_count": total_review_count,
+                "total_reviews": total_review_count,
                 "price": price,
                 "specs": specs[:5],
-                "image": product.get("image")
+                "image": product.get("image"),
+                "reviews_information": rev_info,
             }
 
         except Exception as e:
@@ -314,6 +353,54 @@ class AmazonScraperService:
                         "rating": 5.0 # Simplified
                     })
         return reviews
+
+    def _estimate_rating_from_sentiment(self, sentiment: Optional[str]) -> float:
+        mapping = {
+            "positive": 5.0,
+            "mixed": 3.0,
+            "negative": 1.0,
+        }
+        return mapping.get((sentiment or "").lower(), 4.0)
+
+    def _extract_review_count_from_summary(self, reviews_information: dict) -> int:
+        summary = reviews_information.get("summary", {}) if isinstance(reviews_information, dict) else {}
+        customer_reviews = summary.get("customer_reviews", {})
+        if isinstance(customer_reviews, dict):
+            total = 0
+            for value in customer_reviews.values():
+                try:
+                    total += int(str(value).replace(",", "").strip())
+                except (TypeError, ValueError):
+                    continue
+            if total:
+                return total
+
+        for review in reviews_information.get("authors_reviews", []) or []:
+            reviews_count = review.get("reviews_count")
+            if reviews_count:
+                try:
+                    return int(str(reviews_count).replace(",", "").strip())
+                except ValueError:
+                    continue
+
+        return 0
+
+    def _with_confidence_flags(self, result: dict) -> dict:
+        reviews = result.get("reviews") or []
+        total_reviews = result.get("review_count") or result.get("total_reviews") or len(reviews)
+        result["review_count"] = total_reviews
+        result["total_reviews"] = total_reviews
+        result["confidence"] = round(min(1.0, len(reviews) / 1000.0), 2)
+
+        logger.info(
+            f"[SCRAPER] Method={result.get('method', 'unknown')} | "
+            f"reviews_fetched={len(reviews)} | total_reviews={total_reviews} | "
+            f"confidence={result['confidence']}"
+        )
+        if len(reviews) < MIN_REVIEW_WARNING_THRESHOLD:
+            logger.warning("Low review count from scraper")
+
+        return result
 
     def _extract_asin_and_domain(self, url: str) -> Tuple[str, str]:
         # Standard path-based match

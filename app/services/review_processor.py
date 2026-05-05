@@ -185,6 +185,9 @@ class ReviewProcessor:
         """
         start_time = time.time()
         total_scraped = total_scraped or len(reviews)
+        
+        # Performance Optimization: Cap reviews at 100 for free-tier safe processing
+        reviews = reviews[:100]
 
         logger.info(
             f"[PROCESSOR START] Product: '{product_name}' | "

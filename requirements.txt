@@ -13,6 +13,5 @@ pytest
 sentry-sdk[fastapi]
 langsmith
 aiosqlite
-httpx
 serpapi
 playwright-stealth
