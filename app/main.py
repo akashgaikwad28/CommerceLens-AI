@@ -9,9 +9,7 @@ if sys.platform == 'win32':
 from fastapi import FastAPI, Request
 import logging
 
-# Check loop type
-loop_type = type(asyncio.get_event_loop_policy().get_event_loop()).__name__
-print(f"DEBUG: Current Asyncio Loop: {loop_type}")
+
 import time
 import sentry_sdk
 from app.api.v1 import health, review, aeo
